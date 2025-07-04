@@ -132,7 +132,7 @@ addSliderToToolbar({
     const renderingEngine = getRenderingEngine(renderingEngineId);
     const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
     viewport.setSlabThickness(parseInt(value));
-    renderingEngine.render();
+    viewport.render();
   },
 });
 
@@ -147,6 +147,10 @@ const viewportColors = {
 
 function getReferenceLineColor(viewportId) {
   return viewportColors[viewportId];
+}
+
+function getReferenceLineSlabThicknessControlsOn(viewportId) {
+  return false;
 }
 
 /**
@@ -249,6 +253,7 @@ async function run() {
 
   toolGroup.addTool(CrosshairsTool.toolName, {
     getReferenceLineColor,
+    getReferenceLineSlabThicknessControlsOn,
     mobile: {
       enabled: isMobile,
       opacity: 0.8,
@@ -256,13 +261,13 @@ async function run() {
     },
   });
 
-  toolGroup.setToolPassive(CrosshairsTool.toolName);
+  toolGroup.setToolPassive(CrosshairsTool.toolName)
 
   // Add IntersectionLinesTool to the first three viewports
   toolGroup.addTool(IntersectionLinesTool.toolName, {
     sourceViewportId: viewportId4,
-    color: 'yellow',
-    lineWidth: 2,
+    color: viewportColors[viewportId4],
+    lineWidth: 1,
   });
 
   toolGroup.setToolEnabled(IntersectionLinesTool.toolName);
@@ -278,10 +283,6 @@ async function run() {
   });
 
   const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
-  viewport.setCamera({
-    focalPoint: [0, 0, 0],
-  });
-
   viewport.setSlabThickness(30);
   viewport.setBlendMode(Enums.BlendModes.MAXIMUM_INTENSITY_BLEND);
 

@@ -2,9 +2,10 @@ import { vec3 } from 'gl-matrix';
 import type { Types } from '@cornerstonejs/core';
 import {
   getEnabledElements,
-  getEnabledElement,
+  getRenderingEngine,
   getEnabledElementByIds,
   utilities as csUtils,
+  Enums,
 } from '@cornerstonejs/core';
 import {
   getAnnotations,
@@ -18,6 +19,20 @@ import { drawLine as drawLineSvg } from '../drawingSvg';
 import type { SVGDrawingHelper, Annotation } from '../types';
 import liangBarksyClip from '../utilities/math/vec2/liangBarksyClip';
 
+/**
+ * This tool renders intersection lines between a source viewport and other viewports.
+ * It listens to camera modifications in the source viewport and updates the intersection lines accordingly.
+ *
+ * // TODO
+ * - Add support for dragging lines to adjust the slab
+ * - Visualize center of the slab (center plane) [nice to have]
+ * - Add support for rotating the plane [nice to have]
+ *
+ * // FIXME
+ * - The tool currently does not remove annotations when disabled. FIx the bug in removeAnnotations method.
+ */
+
+
 class IntersectionLinesTool extends AnnotationTool {
   static toolName = 'IntersectionLinesTool';
 
@@ -26,25 +41,30 @@ class IntersectionLinesTool extends AnnotationTool {
     defaultToolProps = {
       supportedInteractionTypes: [], // No interaction
       configuration: {
-        sourceViewportId: 'main',
-        color: 'rgb(0, 0, 255)',
-        lineWidth: 3,
+        sourceViewportId: null,
+        color: 'rgb(255, 255, 0)',
+        lineWidth: 1,
       },
     }
   ) {
     super(toolProps, defaultToolProps);
+
+    this._renderAllViewports = this._renderAllViewports.bind(this);
   }
 
   onSetToolEnabled = (): void => {
     this._init();
+    this._initListener();
   };
 
   onSetToolActive = (): void => {
     this._init();
+    this._initListener();
   };
 
   onSetToolDisabled = (): void => {
-    this._removeAnnotations();
+    // this._removeAnnotations(); // TODO fix this
+    this._removeListener();
   };
 
   _init() {
@@ -54,10 +74,11 @@ class IntersectionLinesTool extends AnnotationTool {
     }
     const viewports = toolGroup.viewportsInfo;
 
-    console.log(`Initializing ${this.getToolName()}, viewports:`, viewports);
     viewports.forEach(({ renderingEngineId, viewportId }) => {
-
-      const enabledElement = getEnabledElementByIds(viewportId, renderingEngineId);
+      const enabledElement = getEnabledElementByIds(
+        viewportId,
+        renderingEngineId
+      );
 
       if (!enabledElement) {
         console.warn(
@@ -95,6 +116,51 @@ class IntersectionLinesTool extends AnnotationTool {
     });
   }
 
+  _initListener() {
+    const sourceViewportId = this.configuration.sourceViewportId;
+    if (!sourceViewportId) {
+      console.warn(`Source viewport id is not set for tool ${this.getToolName()}`);
+      return;
+    }
+
+    const element = document.getElementById(sourceViewportId) as HTMLDivElement;
+    element.addEventListener(
+      Enums.Events.CAMERA_MODIFIED,
+      this._renderAllViewports
+    );
+  }
+
+  _removeListener() {
+    const sourceViewportId = this.configuration.sourceViewportId;
+    if (!sourceViewportId) {
+      console.warn(`Source viewport id is not set for tool ${this.getToolName()}`);
+      return;
+    }
+
+    const element = document.getElementById(sourceViewportId) as HTMLDivElement;
+    element.removeEventListener(
+      Enums.Events.CAMERA_MODIFIED,
+      this._renderAllViewports
+    );
+  }
+
+  _renderAllViewports() {
+    const toolGroup = getToolGroup(this.toolGroupId);
+    if (!toolGroup) {
+      return;
+    }
+    const viewports = toolGroup.viewportsInfo;
+    viewports.forEach(({ renderingEngineId, viewportId }) => {
+      const renderingEngine = getRenderingEngine(renderingEngineId);
+      const viewport = renderingEngine.getViewport(viewportId);
+      if (!viewport) {
+        console.warn(`Viewport not found for id ${viewportId}`);
+        return;
+      }
+      viewport.render();
+    });
+  }
+
   _removeAnnotations() {
     const toolGroup = getToolGroup(this.toolGroupId);
     if (!toolGroup) {
@@ -102,7 +168,10 @@ class IntersectionLinesTool extends AnnotationTool {
     }
     const viewports = toolGroup.viewportsInfo;
     viewports.forEach(({ renderingEngineId, viewportId }) => {
-      const enabledElement = getEnabledElementByIds(viewportId, renderingEngineId);
+      const enabledElement = getEnabledElementByIds(
+        viewportId,
+        renderingEngineId
+      );
       const { element } = enabledElement;
       const annotations = getAnnotations(this.getToolName(), element);
       if (annotations && annotations.length) {
@@ -130,7 +199,6 @@ class IntersectionLinesTool extends AnnotationTool {
     const { sourceViewportId, color, lineWidth } = this.configuration;
 
     const annotations = getAnnotations(this.getToolName(), viewport.element);
-    console.log(annotations)
 
     if (!annotations || !annotations.length) {
       // console.warn(
@@ -160,6 +228,7 @@ class IntersectionLinesTool extends AnnotationTool {
     const { viewPlaneNormal: n_s, focalPoint: p_s } = sourceCamera;
     const slabThickness = sourceViewport.getSlabThickness();
 
+    console.log(viewport.id, n_c, n_s, csUtils.isEqual(n_c, n_s));
     if (csUtils.isEqual(n_c, n_s)) {
       // Parallel viewports, no intersection line
       return false;
@@ -185,7 +254,10 @@ class IntersectionLinesTool extends AnnotationTool {
 
     planes.forEach((plane, index) => {
       const plane1_vtk = csUtils.planar.planeEquation(n_c, p_c);
-      const plane2_vtk = csUtils.planar.planeEquation(plane.normal, plane.point);
+      const plane2_vtk = csUtils.planar.planeEquation(
+        plane.normal,
+        plane.point
+      );
 
       const intersectionDirection = vec3.create();
       vec3.cross(intersectionDirection, n_c, plane.normal);
@@ -238,9 +310,9 @@ class IntersectionLinesTool extends AnnotationTool {
         {
           color: color,
           lineWidth: lineWidth,
+          lineDash: [5,2]
         }
       );
-
     });
 
     return true;
