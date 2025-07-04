@@ -63,6 +63,7 @@ import SegmentBidirectionalTool from './segmentation/SegmentBidirectionalTool';
 import * as strategies from './segmentation/strategies';
 import SegmentLabelTool from './segmentation/SegmentLabelTool';
 import LabelMapEditWithContourTool from './segmentation/LabelmapEditWithContour';
+import IntersectionLinesTool from './IntersectionLinesTool';
 
 export {
   // ~~ BASE
@@ -85,6 +86,7 @@ export {
   ReferenceLinesTool,
   OverlayGridTool,
   SegmentationIntersectionTool,
+  IntersectionLinesTool,
   BidirectionalTool,
   LabelTool,
   LengthTool,
