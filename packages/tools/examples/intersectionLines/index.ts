@@ -15,20 +15,19 @@ import {
   addButtonToToolbar,
   addSliderToToolbar,
 } from '../../../../utils/demo/helpers';
-import * as cornerstoneTools from '@cornerstonejs/tools';
+import {
+  ToolGroupManager,
+  Enums as csToolsEnums,
+  CrosshairsTool,
+  IntersectionLinesTool,
+  TrackballRotateTool,
+  addTool,
+} from '@cornerstonejs/tools';
 
 // This is for debugging purposes
 console.warn(
   'Click on index.ts to open source code for this example --------->'
 );
-
-const {
-  ToolGroupManager,
-  Enums: csToolsEnums,
-  CrosshairsTool,
-  IntersectionLinesTool,
-  TrackballRotateTool
-} = cornerstoneTools;
 
 const { MouseBindings } = csToolsEnums;
 const { ViewportType } = Enums;
@@ -130,7 +129,9 @@ addSliderToToolbar({
   defaultValue: 100,
   onSelectedValueChange: (value) => {
     const renderingEngine = getRenderingEngine(renderingEngineId);
-    const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
+    const viewport = renderingEngine.getViewport(
+      viewportId4
+    ) as Types.IVolumeViewport;
     viewport.setSlabThickness(parseInt(value));
     viewport.render();
   },
@@ -161,9 +162,9 @@ async function run() {
   await initDemo();
 
   // Add tools to Cornerstone3D
-  cornerstoneTools.addTool(CrosshairsTool);
-  cornerstoneTools.addTool(IntersectionLinesTool);
-  cornerstoneTools.addTool(TrackballRotateTool);
+  addTool(CrosshairsTool);
+  addTool(IntersectionLinesTool);
+  addTool(TrackballRotateTool);
 
   // Get Cornerstone imageIds for the source data and fetch metadata into RAM
   const imageIds = await createImageIdsAndCacheMetaData({
@@ -261,7 +262,7 @@ async function run() {
     },
   });
 
-  toolGroup.setToolPassive(CrosshairsTool.toolName)
+  toolGroup.setToolPassive(CrosshairsTool.toolName);
 
   // Add IntersectionLinesTool to the first three viewports
   toolGroup.addTool(IntersectionLinesTool.toolName, {
@@ -284,7 +285,9 @@ async function run() {
     bindings: [{ mouseButton: MouseBindings.Primary }],
   });
 
-  const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
+  const viewport = renderingEngine.getViewport(
+    viewportId4
+  ) as Types.IVolumeViewport;
   viewport.setSlabThickness(100);
   viewport.setBlendMode(Enums.BlendModes.MAXIMUM_INTENSITY_BLEND);
 
