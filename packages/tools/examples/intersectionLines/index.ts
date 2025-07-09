@@ -127,7 +127,7 @@ addSliderToToolbar({
   title: 'Slab Thickness',
   range: [1, 100],
   step: 1,
-  defaultValue: 30,
+  defaultValue: 100,
   onSelectedValueChange: (value) => {
     const renderingEngine = getRenderingEngine(renderingEngineId);
     const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
@@ -150,7 +150,7 @@ function getReferenceLineColor(viewportId) {
 }
 
 function getReferenceLineSlabThicknessControlsOn(viewportId) {
-  return false;
+  return true;
 }
 
 /**
@@ -270,7 +270,9 @@ async function run() {
     lineWidth: 1,
   });
 
-  toolGroup.setToolEnabled(IntersectionLinesTool.toolName);
+  toolGroup.setToolPassive(IntersectionLinesTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Primary }],
+  });
 
   // Create a second tool group for the fourth viewport
   const toolGroup2 = ToolGroupManager.createToolGroup('toolGroupId2');
@@ -283,7 +285,7 @@ async function run() {
   });
 
   const viewport = renderingEngine.getViewport(viewportId4) as Types.IVolumeViewport;
-  viewport.setSlabThickness(30);
+  viewport.setSlabThickness(100);
   viewport.setBlendMode(Enums.BlendModes.MAXIMUM_INTENSITY_BLEND);
 
   // Render the image
