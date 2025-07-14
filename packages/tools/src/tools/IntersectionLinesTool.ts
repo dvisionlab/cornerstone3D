@@ -50,7 +50,7 @@ const OPERATION = {
  * Supports dragging lines to adjust the slab thickness.
  */
 class IntersectionLinesTool extends AnnotationTool {
-  static toolName = 'IntersectionLinesTool';
+  static toolName;
 
   constructor(
     toolProps = {},
@@ -743,5 +743,5 @@ class IntersectionLinesTool extends AnnotationTool {
     return null;
   };
 }
-
+IntersectionLinesTool.toolName = 'IntersectionLines';
 export default IntersectionLinesTool;
