@@ -1,5 +1,6 @@
 import vtkOrientationMarkerWidget from '@kitware/vtk.js/Interaction/Widgets/OrientationMarkerWidget';
-import vtkAnnotatedCubeActor from '@kitware/vtk.js/Rendering/Core/AnnotatedCubeActor';
+// import vtkAnnotatedCubeActor from '@kitware/vtk.js/Rendering/Core/AnnotatedCubeActor';
+import vtkAnnotatedCubeActor from './widget';
 import vtkAxesActor from '@kitware/vtk.js/Rendering/Core/AxesActor';
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
@@ -126,6 +127,8 @@ class OrientationMarkerTool extends BaseTool {
     super(toolProps, defaultToolProps);
     this.orientationMarkers = {};
     this.updatingOrientationMarker = {};
+
+    console.log('OrientationMarkerTool constructor', this.configuration);
   }
 
   onSetToolEnabled = (): void => {

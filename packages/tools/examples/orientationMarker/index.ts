@@ -16,6 +16,11 @@ import * as cornerstoneTools from '@cornerstonejs/tools';
 import addDropDownToToolbar from '../../../../utils/demo/helpers/addDropdownToToolbar';
 import setPetTransferFunction from '../../../../utils/demo/helpers/setPetTransferFunctionForVolumeActor';
 import { VolumeRotateTool } from '@cornerstonejs/tools';
+import ImageHelper from '@kitware/vtk.js/Common/Core/ImageHelper';
+import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import '@kitware/vtk.js/Rendering/Profiles/All'; // If you want all profiles
 
 async function getImageStacks() {
   const wadoRsRoot1 = 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb';
@@ -63,6 +68,65 @@ const ptToolGroupId = 'PT_TOOLGROUP_ID';
 let ctToolGroup;
 let ptToolGroup;
 
+function getConfig(value) {
+  return {
+    overlayMarkerType: OrientationMarkerTool.OVERLAY_MARKER_TYPES[value],
+    overlayConfiguration: {
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.ANNOTATED_CUBE]: {
+        faceProperties: {
+          xPlus: {
+            text: ['A', 'B', 'C', 'D', 'E'],
+            faceColor: '#ffff00',
+            faceRotation: 270,
+          },
+          xMinus: {
+            text: ['F', 'G', 'H', 'I', 'J'],
+            faceColor: '#ffff00',
+            faceRotation: 0,
+          },
+          yPlus: {
+            text: ['K', 'L', 'M', 'N', 'O'],
+            faceColor: '#00ffff',
+            fontColor: 'white',
+            faceRotation: 0,
+          },
+          yMinus: {
+            text: ['P', 'Q', 'R', 'S', 'T'],
+            faceColor: '#00ffff',
+            fontColor: 'white',
+            faceRotation: 180,
+          },
+          zPlus: {
+            text: ['U', 'V', 'W', 'X', 'Y'],
+            faceColor: '#ff00ff',
+            fontColor: 'white',
+          },
+          zMinus: {
+            text: ['A', 'F', 'P', 'R', 'L'],
+            faceColor: '#ff00ff',
+            fontColor: 'white',
+          },
+        },
+        defaultStyle: {
+          fontStyle: 'bold',
+          fontFamily: 'Arial',
+          fontColor: 'black',
+          fontSizeScale: (res) => res / 4,
+          faceColor: '#0000ff',
+          edgeThickness: 0.1,
+          edgeColor: 'black',
+          resolution: 400,
+        },
+      },
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.AXES]: {},
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.CUSTOM]: {
+        polyDataURL:
+          'https://raw.githubusercontent.com/Slicer/Slicer/80ad0a04dacf134754459557bf2638c63f3d1d1b/Base/Logic/Resources/OrientationMarkers/Human.vtp',
+      },
+    },
+  };
+}
+
 addDropDownToToolbar({
   options: {
     values: Object.keys(OrientationMarkerTool.OVERLAY_MARKER_TYPES),
@@ -71,9 +135,10 @@ addDropDownToToolbar({
   onSelectedValueChange: (value) => {
     [ctToolGroup, ptToolGroup].forEach((toolGroup) => {
       toolGroup.setToolDisabled(OrientationMarkerTool.toolName);
-      toolGroup.setToolConfiguration(OrientationMarkerTool.toolName, {
-        overlayMarkerType: OrientationMarkerTool.OVERLAY_MARKER_TYPES[value],
-      });
+      toolGroup.setToolConfiguration(
+        OrientationMarkerTool.toolName,
+        getConfig(value)
+      );
 
       toolGroup.setToolEnabled(OrientationMarkerTool.toolName);
     });
@@ -285,6 +350,63 @@ async function run() {
 
   // Render the image
   renderingEngine.render();
+
+  /*
+  const canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 400;
+  drawLetters(canvas, ['A', 'B', 'C', 'D', 'E']);
+  canvas.getContext('2d').rotate(-Math.PI * (0 / 180.0)); // TODO face rotation
+
+  const newData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
+  console.log(newData);
+
+  window.re = renderingEngine;
+  */
+  // window.tx = renderingEngine.getViewports()[0].getWidgets()[0].getActor().getTextures()[0]
+
+  /*
+  const actor = renderingEngine.getViewports()[0].getWidgets()[0].getActor();
+  // const mapper = actor.getMapper()
+  // const texture = vtkTexture.newInstance();
+  const texture = actor.getTextures()[0]
+  // const vtkImage = ImageHelper.canvasToImageData(canvas);
+  const vtkImage = texture.getInputData(5).getPointData().getScalars().setData(new Uint8Array(newData.data));
+  // texture.getInputData().getPointData().getScalars().setData(newData.data);
+  // texture.setInputData(vtkImage, 5);
+  texture.modified();
+  // texture.setCanvas(canvas);
+  window.actor = actor;
+  // actor.removeAllTextures();
+  // actor.addTexture(texture);
+  actor.modified();
+  */
+  /*
+  const oldActor = renderingEngine.getViewports()[0].getWidgets()[0].getActor();
+  const oldTexture = oldActor.getTextures()[0]
+
+  const texture = vtkTexture.newInstance();
+  const vtkImage = ImageHelper.canvasToImageData(canvas);
+  texture.setInputData(vtkImage, 5);
+
+  const widget = renderingEngine.getViewports()[0].getWidgets()[0]
+  window.widget = widget;
+  const mapper = oldActor.getMapper();
+  const cubeSource = vtkCubeSource.newInstance({
+    generate3DTextureCoordinates: true,
+  });
+  mapper.setInputConnection(cubeSource.getOutputPort());
+
+  const actor = vtkActor.newInstance();
+  actor.setVisibility(true);
+  actor.setMapper(mapper);
+  // actor.addTexture(oldTexture);
+  actor.addTexture(texture);
+  actor.modified();
+
+  widget.setActor(actor);
+  widget.updateViewport();
+  */
 }
 
 run();
