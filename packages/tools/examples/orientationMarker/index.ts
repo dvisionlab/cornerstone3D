@@ -351,18 +351,18 @@ async function run() {
   // Render the image
   renderingEngine.render();
 
-  /*
+
   const canvas = document.createElement('canvas');
   canvas.width = 400;
   canvas.height = 400;
-  drawLetters(canvas, ['A', 'B', 'C', 'D', 'E']);
+  drawLetters(canvas, ['A', 'B', 'C', 'D', 'E'], 0);
   canvas.getContext('2d').rotate(-Math.PI * (0 / 180.0)); // TODO face rotation
 
   const newData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
   console.log(newData);
 
   window.re = renderingEngine;
-  */
+
   // window.tx = renderingEngine.getViewports()[0].getWidgets()[0].getActor().getTextures()[0]
 
   /*
@@ -381,6 +381,7 @@ async function run() {
   // actor.addTexture(texture);
   actor.modified();
   */
+
   /*
   const oldActor = renderingEngine.getViewports()[0].getWidgets()[0].getActor();
   const oldTexture = oldActor.getTextures()[0]
@@ -410,3 +411,78 @@ async function run() {
 }
 
 run();
+
+/**
+ * Draws a cross-shaped arrangement of letters on the canvas.
+ * The letters are positioned as:
+ * [0] (top)
+ * [3] [1] [4] (middle row: left, center, right)
+ * [2] (bottom)
+ *
+ * @param {string[]} letters An array of 5 single-character strings
+ * in the order: [top, center, bottom, left, right].
+ */
+function drawLetters(canvas, letters, faceRotation) {
+  const ctx = canvas.getContext('2d');
+
+  // Clear the canvas before redrawing
+  // ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Fill the background with black
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Flip the canvas vertically
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+
+  // TODO rotate
+
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-Math.PI * (faceRotation / 180.0));
+  ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+  // Set text color
+  ctx.fillStyle = '#000000';
+
+  // Calculate the center of the canvas
+  const centerX = canvas.width / 2;
+  // Adjusted centerY to move the entire group down by a smaller percentage of canvas height
+  const centerY = canvas.height / 2 + canvas.height * 0.02; // Move down by 2% of canvas height
+
+  // Base font size for A, C, D, E (adjust dynamically)
+  const baseFontSize = (canvas.height / 3) * 0.7;
+
+  // Larger font size for B (the center letter)
+  const bFontSize = baseFontSize * 1.5; // B will be 50% larger than others
+
+  // Define spacing based on the larger 'B' font size to ensure enough room
+  const spacing = bFontSize * 1.0; // Adjust this multiplier for desired gap
+
+  // Draw the center letter (index 1 in the array) first with its larger font size
+  ctx.font = `${bFontSize}px Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letters[1], centerX, centerY); // Draw 'B'
+
+  // Now draw other letters, resetting font and adjusting positions relative to the center
+  ctx.font = `${baseFontSize}px Arial, sans-serif`;
+
+  // Position for the top letter (index 0)
+  const centerY_A = centerY - spacing;
+  ctx.fillText(letters[0], centerX, centerY_A); // Draw 'A'
+
+  // Position for the bottom letter (index 2)
+  const centerY_C = centerY + spacing;
+  ctx.fillText(letters[2], centerX, centerY_C); // Draw 'C'
+
+  // Position for the left letter (index 3)
+  const centerX_D = centerX - spacing;
+  ctx.fillText(letters[3], centerX_D, centerY); // Draw 'D'
+
+  // Position for the right letter (index 4)
+  const centerX_E = centerX + spacing;
+  ctx.fillText(letters[4], centerX_E, centerY); // Draw 'E'
+
+  ctx.restore();
+}
