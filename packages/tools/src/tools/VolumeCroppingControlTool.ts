@@ -1851,6 +1851,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const { handles } = viewportAnnotation.data;
 
     if (handles.activeOperation === OPERATION.DRAG) {
+      /*
       if (handles.activeType === 'min') {
         this.toolCenterMin[0] += delta[0];
         this.toolCenterMin[1] += delta[1];
@@ -1864,6 +1865,40 @@ class VolumeCroppingControlTool extends AnnotationTool {
         this.toolCenter[1] += delta[1];
         this.toolCenter[2] += delta[2];
       }
+        */
+      // Determina quale linea è attiva (asse e min/max)
+      const activeType = handles.activeType; // 'min' o 'max'
+      // Determina l'orientamento della viewport
+      const orientation = viewportAnnotation.data.orientation?.toUpperCase();
+
+      // Applica il delta solo sull'asse corretto
+      if (activeType === 'min' || activeType === 'max') {
+        // Determina quale asse modificare in base all'orientamento e alla linea selezionata
+        let axis = -1;
+        if (orientation === 'AXIAL') {
+          // AXIAL: linee XMIN/XMAX (asse 0), YMIN/YMAX (asse 1)
+          axis = handles.activeLineIndex === 0 ? 0 : 1;
+        } else if (orientation === 'CORONAL') {
+          // CORONAL: XMIN/XMAX (asse 0), ZMIN/ZMAX (asse 2)
+          axis = handles.activeLineIndex === 0 ? 0 : 2;
+        } else if (orientation === 'SAGITTAL') {
+          // SAGITTAL: YMIN/YMAX (asse 1), ZMIN/ZMAX (asse 2)
+          axis = handles.activeLineIndex === 0 ? 1 : 2;
+        }
+        if (axis !== -1) {
+          if (activeType === 'min') {
+            this.toolCenterMin[axis] += delta[axis];
+          } else {
+            this.toolCenterMax[axis] += delta[axis];
+          }
+        }
+      } else {
+        // Se trascini il centro, aggiorna tutti gli assi
+        this.toolCenter[0] += delta[0];
+        this.toolCenter[1] += delta[1];
+        this.toolCenter[2] += delta[2];
+      }
+
       const viewportsInfo = this._getViewportsInfo();
       triggerAnnotationRenderForViewportIds(
         viewportsInfo.map(({ viewportId }) => viewportId)
@@ -1956,6 +1991,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
           viewportIdArray.push(otherViewport.id);
           data.handles.activeOperation = 1; // DRAG
           data.handles.activeType = type;
+          data.handles.activeLineIndex = i % 2; // 0: prima linea (X o Y), 1: seconda linea (Y o Z)
         }
       }
     }
