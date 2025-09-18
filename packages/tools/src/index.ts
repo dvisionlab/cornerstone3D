@@ -86,6 +86,7 @@ import {
   LabelmapBaseTool,
   SegmentLabelTool,
   LabelMapEditWithContourTool,
+  IntersectionLinesTool,
 } from './tools';
 
 import VideoRedactionTool from './tools/annotation/VideoRedactionTool';
@@ -125,6 +126,7 @@ export {
   ReferenceLinesTool,
   OverlayGridTool,
   SegmentationIntersectionTool,
+  IntersectionLinesTool,
   ProbeTool,
   RectangleROITool,
   EllipticalROITool,
