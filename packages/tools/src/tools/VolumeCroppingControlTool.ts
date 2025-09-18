@@ -1151,6 +1151,13 @@ class VolumeCroppingControlTool extends AnnotationTool {
       annotations = annotations.concat(this._virtualAnnotations);
     }
     const camera = viewport.getCamera();
+    // Nascondi reference lines se la vista non è ortogonale
+    const orientation = this._getOrientationFromNormal(camera.viewPlaneNormal);
+    if (!orientation) {
+      // Non ortogonale: non disegnare reference lines
+      return false;
+    }
+
     const filteredToolAnnotations =
       this.filterInteractableAnnotationsForElement(element, annotations);
 
@@ -1189,185 +1196,155 @@ class VolumeCroppingControlTool extends AnnotationTool {
     // get canvas information for points and lines (canvas box, canvas horizontal distances)
     const canvasBox = [0, 0, clientWidth, clientHeight];
 
+    // Funzione di utilità: intersezione piano-box
+    function getPlaneBoxIntersection(planeAxis, planeValue, boxMin, boxMax) {
+      const corners = [
+        [boxMin[0], boxMin[1], boxMin[2]],
+        [boxMin[0], boxMin[1], boxMax[2]],
+        [boxMin[0], boxMax[1], boxMin[2]],
+        [boxMin[0], boxMax[1], boxMax[2]],
+        [boxMax[0], boxMin[1], boxMin[2]],
+        [boxMax[0], boxMin[1], boxMax[2]],
+        [boxMax[0], boxMax[1], boxMin[2]],
+        [boxMax[0], boxMax[1], boxMax[2]],
+      ];
+      const edges = [
+        [0,1],[0,2],[0,4],
+        [1,3],[1,5],
+        [2,3],[2,6],
+        [3,7],
+        [4,5],[4,6],
+        [5,7],
+        [6,7],
+      ];
+      function intersectEdge(p1, p2) {
+        let t;
+        if (planeAxis==='X') t = (planeValue-p1[0])/(p2[0]-p1[0]);
+        else if (planeAxis==='Y') t = (planeValue-p1[1])/(p2[1]-p1[1]);
+        else t = (planeValue-p1[2])/(p2[2]-p1[2]);
+        if (t>=0 && t<=1) {
+          return [
+            p1[0]+t*(p2[0]-p1[0]),
+            p1[1]+t*(p2[1]-p1[1]),
+            p1[2]+t*(p2[2]-p1[2])
+          ];
+        }
+        return null;
+      }
+      const points = [];
+      for (const [i1,i2] of edges) {
+        const p = intersectEdge(corners[i1], corners[i2]);
+        if (p) points.push(p);
+      }
+      // Rimuovi duplicati
+      const unique = [];
+      for (const pt of points) {
+        if (!unique.some(u=>Math.abs(u[0]-pt[0])<1e-5 && Math.abs(u[1]-pt[1])<1e-5 && Math.abs(u[2]-pt[2])<1e-5)) unique.push(pt);
+      }
+      return unique;
+    }
+
     otherViewportAnnotations.forEach((annotation) => {
       const data = annotation.data;
-      // Type guard for isVirtual property
-      const isVirtual =
-        'isVirtual' in annotation &&
-        (annotation as { isVirtual?: boolean }).isVirtual === true;
-      data.handles.toolCenter = this.toolCenter;
-      let otherViewport,
-        otherCamera,
-        clientWidth,
-        clientHeight,
-        otherCanvasDiagonalLength,
-        otherCanvasCenter,
-        otherViewportCenterWorld;
-      if (isVirtual) {
-        // Synthesize a virtual viewport/camera for any missing orientation
-        const realViewports = viewportsInfo.filter(
-          (vp) => vp.viewportId !== data.viewportId
-        );
-        if (realViewports.length === 2) {
-          const vp1 = renderingEngine.getViewport(realViewports[0].viewportId);
-          const vp2 = renderingEngine.getViewport(realViewports[1].viewportId);
-          const normal1 = vp1.getCamera().viewPlaneNormal;
-          const normal2 = vp2.getCamera().viewPlaneNormal;
-          const virtualNormal = vec3.create();
-          vec3.cross(virtualNormal, normal1, normal2);
-          vec3.normalize(virtualNormal, virtualNormal);
-          otherCamera = {
-            viewPlaneNormal: virtualNormal,
-            position: data.handles.toolCenter,
-            focalPoint: data.handles.toolCenter,
-            viewUp: [0, 1, 0],
-          };
-          clientWidth = viewport.canvas.clientWidth;
-          clientHeight = viewport.canvas.clientHeight;
-          otherCanvasDiagonalLength = Math.sqrt(
-            clientWidth * clientWidth + clientHeight * clientHeight
-          );
-          otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
-          otherViewportCenterWorld = data.handles.toolCenter;
-          otherViewport = {
-            id: data.viewportId,
-            canvas: viewport.canvas,
-            canvasToWorld: () => data.handles.toolCenter,
-          };
-        } else {
-          // Only one real viewport: use canonical normal from virtual annotation
-          const virtualNormal = (annotation as VolumeCroppingAnnotation)
-            .virtualNormal ?? [0, 0, 1];
-          otherCamera = {
-            viewPlaneNormal: virtualNormal,
-            position: data.handles.toolCenter,
-            focalPoint: data.handles.toolCenter,
-            viewUp: [0, 1, 0],
-          };
-          clientWidth = viewport.canvas.clientWidth;
-          clientHeight = viewport.canvas.clientHeight;
-          otherCanvasDiagonalLength = Math.sqrt(
-            clientWidth * clientWidth + clientHeight * clientHeight
-          );
-          otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
-          otherViewportCenterWorld = data.handles.toolCenter;
-          otherViewport = {
-            id: data.viewportId,
-            canvas: viewport.canvas,
-            canvasToWorld: () => data.handles.toolCenter,
-          };
-        }
+      const otherViewport = renderingEngine.getViewport(data.viewportId as string);
+      const otherOrientation = this._getOrientationFromNormal(otherViewport.getCamera().viewPlaneNormal);
+      let planeAxis, minValue, maxValue;
+      if (otherOrientation === 'AXIAL') {
+        planeAxis = 'Z';
+        minValue = Math.min(this.toolCenterMin[2], this.toolCenterMax[2]);
+        maxValue = Math.max(this.toolCenterMin[2], this.toolCenterMax[2]);
+      } else if (otherOrientation === 'CORONAL') {
+        planeAxis = 'Y';
+        minValue = Math.min(this.toolCenterMin[1], this.toolCenterMax[1]);
+        maxValue = Math.max(this.toolCenterMin[1], this.toolCenterMax[1]);
+      } else if (otherOrientation === 'SAGITTAL') {
+        planeAxis = 'X';
+        minValue = Math.min(this.toolCenterMin[0], this.toolCenterMax[0]);
+        maxValue = Math.max(this.toolCenterMin[0], this.toolCenterMax[0]);
       } else {
-        otherViewport = renderingEngine.getViewport(data.viewportId as string);
-        otherCamera = otherViewport.getCamera();
-        clientWidth = otherViewport.canvas.clientWidth;
-        clientHeight = otherViewport.canvas.clientHeight;
-        otherCanvasDiagonalLength = Math.sqrt(
-          clientWidth * clientWidth + clientHeight * clientHeight
-        );
-        otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
-        otherViewportCenterWorld =
-          otherViewport.canvasToWorld(otherCanvasCenter);
+        return;
       }
-
-      const otherViewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
-
-      const direction = [0, 0, 0];
-      vtkMath.cross(
-        camera.viewPlaneNormal as [number, number, number],
-        otherCamera.viewPlaneNormal as [number, number, number],
-        direction as [number, number, number]
-      );
-      vtkMath.normalize(direction as [number, number, number]);
-      vtkMath.multiplyScalar(
-        direction as [number, number, number],
-        otherCanvasDiagonalLength
-      );
-
-      const pointWorld0: [number, number, number] = [0, 0, 0];
-      vtkMath.add(
-        otherViewportCenterWorld as [number, number, number],
-        direction as [number, number, number],
-        pointWorld0
-      );
-      const pointWorld1: [number, number, number] = [0, 0, 0];
-      vtkMath.subtract(
-        otherViewportCenterWorld as [number, number, number],
-        direction as [number, number, number],
-        pointWorld1
-      );
-
-      const pointCanvas0 = viewport.worldToCanvas(pointWorld0 as Types.Point3);
-      const otherViewportCenterCanvas = viewport.worldToCanvas([
-        otherViewportCenterWorld[0] ?? 0,
-        otherViewportCenterWorld[1] ?? 0,
-        otherViewportCenterWorld[2] ?? 0,
-      ] as [number, number, number] as Types.Point3);
-
-      const canvasUnitVectorFromCenter = vec2.create();
-      vec2.subtract(
-        canvasUnitVectorFromCenter,
-        pointCanvas0,
-        otherViewportCenterCanvas
-      );
-      vec2.normalize(canvasUnitVectorFromCenter, canvasUnitVectorFromCenter);
-
-      const canvasVectorFromCenterLong = vec2.create();
-      vec2.scale(
-        canvasVectorFromCenterLong,
-        canvasUnitVectorFromCenter,
-        canvasDiagonalLength * 100
-      );
-
-      // For min
-      const refLinesCenterMin = otherViewportControllable
-        ? vec2.clone(volumeCroppingCenterCanvasMin)
-        : vec2.clone(otherViewportCenterCanvas);
-      const refLinePointMinOne = vec2.create();
-      const refLinePointMinTwo = vec2.create();
-      vec2.add(
-        refLinePointMinOne,
-        refLinesCenterMin,
-        canvasVectorFromCenterLong
-      );
-      vec2.subtract(
-        refLinePointMinTwo,
-        refLinesCenterMin,
-        canvasVectorFromCenterLong
-      );
-      liangBarksyClip(refLinePointMinOne, refLinePointMinTwo, canvasBox);
-      referenceLines.push([
-        otherViewport,
-        refLinePointMinOne,
-        refLinePointMinTwo,
-        'min',
-      ]);
-
-      // For max center
-      const refLinesCenterMax = otherViewportControllable
-        ? vec2.clone(volumeCroppingCenterCanvasMax)
-        : vec2.clone(otherViewportCenterCanvas);
-      const refLinePointMaxOne = vec2.create();
-      const refLinePointMaxTwo = vec2.create();
-      vec2.add(
-        refLinePointMaxOne,
-        refLinesCenterMax,
-        canvasVectorFromCenterLong
-      );
-      vec2.subtract(
-        refLinePointMaxTwo,
-        refLinesCenterMax,
-        canvasVectorFromCenterLong
-      );
-      liangBarksyClip(refLinePointMaxOne, refLinePointMaxTwo, canvasBox);
-      referenceLines.push([
-        otherViewport,
-        refLinePointMaxOne,
-        refLinePointMaxTwo,
-        'max',
-      ]);
+      // Disegna sia il piano min che il piano max
+      [minValue, maxValue].forEach((planeValue, i) => {
+        const pts = getPlaneBoxIntersection(planeAxis, planeValue, this.toolCenterMin, this.toolCenterMax);
+        // Debug: logga i punti trovati
+        if (typeof window !== 'undefined' && window.console) {
+          console.log(`[DEBUG] Intersezione piano ${planeAxis}=${planeValue} con box`, pts);
+        }
+        if (pts.length < 2) return;
+        // Se ci sono 4 punti, ordina e collega i lati opposti
+        if (pts.length === 4) {
+          // Determina il piano di proiezione in base all'orientamento della vista
+          let planeA, planeB;
+          if (otherOrientation === 'AXIAL') {
+            planeA = 0; // X
+            planeB = 1; // Y
+          } else if (otherOrientation === 'CORONAL') {
+            planeA = 0; // X
+            planeB = 2; // Z
+          } else if (otherOrientation === 'SAGITTAL') {
+            planeA = 1; // Y
+            planeB = 2; // Z
+          }
+          // Ordina i punti in senso orario nel piano corretto
+          const centroid = [
+            (pts[0][planeA] + pts[1][planeA] + pts[2][planeA] + pts[3][planeA]) / 4,
+            (pts[0][planeB] + pts[1][planeB] + pts[2][planeB] + pts[3][planeB]) / 4,
+          ];
+          const ordered = pts.slice().sort((a, b) => {
+            const angleA = Math.atan2(a[planeB] - centroid[1], a[planeA] - centroid[0]);
+            const angleB = Math.atan2(b[planeB] - centroid[1], b[planeA] - centroid[0]);
+            return angleA - angleB;
+          });
+          // Collega solo i lati ortogonali rispetto alla vista
+          // (cioè, nel piano proiettato: [0]-[1] e [2]-[3] sono "orizzontali", [1]-[2] e [3]-[0] sono "verticali")
+          // Disegna solo [0]-[1] e [2]-[3] (orizzontali)
+          const pA1 = viewport.worldToCanvas(ordered[0]);
+          const pA2 = viewport.worldToCanvas(ordered[1]);
+          const pB1 = viewport.worldToCanvas(ordered[2]);
+          const pB2 = viewport.worldToCanvas(ordered[3]);
+          referenceLines.push([
+            otherViewport,
+            pA1,
+            pA2,
+            `${i === 0 ? 'clipping_min' : 'clipping_max'}_h1`,
+          ]);
+          referenceLines.push([
+            otherViewport,
+            pB1,
+            pB2,
+            `${i === 0 ? 'clipping_min' : 'clipping_max'}_h2`,
+          ]);
+          // Disegna solo [1]-[2] e [3]-[0] (verticali)
+          referenceLines.push([
+            otherViewport,
+            viewport.worldToCanvas(ordered[1]),
+            viewport.worldToCanvas(ordered[2]),
+            `${i === 0 ? 'clipping_min' : 'clipping_max'}_v1`,
+          ]);
+          referenceLines.push([
+            otherViewport,
+            viewport.worldToCanvas(ordered[3]),
+            viewport.worldToCanvas(ordered[0]),
+            `${i === 0 ? 'clipping_min' : 'clipping_max'}_v2`,
+          ]);
+        } else {
+          // Se meno di 4 punti, collega i due più distanti (fallback)
+          let maxDist = 0, idxA = 0, idxB = 1;
+          for (let i = 0; i < pts.length; ++i) for (let j = i + 1; j < pts.length; ++j) {
+            const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1], pts[i][2] - pts[j][2]);
+            if (d > maxDist) { maxDist = d; idxA = i; idxB = j; }
+          }
+          const pA = viewport.worldToCanvas(pts[idxA]);
+          const pB = viewport.worldToCanvas(pts[idxB]);
+          referenceLines.push([
+            otherViewport,
+            pA,
+            pB,
+            i === 0 ? 'clipping_min' : 'clipping_max',
+          ]);
+        }
+      });
     });
 
     data.referenceLines = referenceLines;
@@ -1377,129 +1354,21 @@ class VolumeCroppingControlTool extends AnnotationTool {
       viewportColor !== undefined ? viewportColor : 'rgb(200, 200, 200)';
 
     referenceLines.forEach((line, lineIndex) => {
-      // Calculate intersections with other lines in this viewport
-      const intersections = [];
-      for (let j = 0; j < referenceLines.length; ++j) {
-        if (j === lineIndex) {
-          continue;
-        }
-        const otherLine = referenceLines[j];
-        const intersection = lineIntersection2D(
-          line[1],
-          line[2],
-          otherLine[1],
-          otherLine[2]
-        );
-        if (intersection) {
-          intersections.push({
-            with: otherLine[3], // 'min' or 'max'
-            point: intersection,
-          });
-        }
-      }
-
-      // get color for the reference line using orientation
-      const otherViewport = line[0];
-      let orientation = null;
-      // Try to get orientation from annotation data or viewportId
-      if (otherViewport && otherViewport.id) {
-        // Try to get from annotation if available
-        const annotationForViewport = annotations.find(
-          (a) => a.data.viewportId === otherViewport.id
-        );
-        if (annotationForViewport && annotationForViewport.data.orientation) {
-          orientation = String(
-            annotationForViewport.data.orientation
-          ).toUpperCase();
-        } else {
-          // Fallback: try to infer from viewportId
-          const idUpper = otherViewport.id.toUpperCase();
-          if (idUpper.includes('AXIAL')) {
-            orientation = 'AXIAL';
-          } else if (idUpper.includes('CORONAL')) {
-            orientation = 'CORONAL';
-          } else if (idUpper.includes('SAGITTAL')) {
-            orientation = 'SAGITTAL';
-          }
-        }
-      }
-      // Use lineColors from configuration
-      const lineColors = this.configuration.lineColors || {};
-      const colorArr = lineColors[orientation] ||
-        lineColors.unknown || [1.0, 0.0, 0.0]; // fallback to red
-      // Convert [r,g,b] to rgb string if needed
-      const color = Array.isArray(colorArr)
-        ? `rgb(${colorArr.map((v) => Math.round(v * 255)).join(',')})`
-        : colorArr;
-
-      const viewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
-      const selectedViewportId = data.activeViewportIds.find(
-        (id) => id === otherViewport.id
-      );
-
-      let lineWidth = this.configuration.lineWidth ?? 1.5;
-      const lineActive =
-        data.handles.activeOperation !== null &&
-        data.handles.activeOperation === OPERATION.DRAG &&
-        selectedViewportId;
-      if (lineActive) {
-        lineWidth = this.configuration.activeLineWidth ?? 2.5;
-      }
-
+      // Forza colore rosso e spessore spesso per debug
+      const color = 'rgb(255,0,0)';
+      const lineWidth = 4;
       const lineUID = `${lineIndex}`;
-      if (viewportControllable) {
-        if (intersections.length === 2) {
-          drawLineSvg(
-            svgDrawingHelper,
-            annotationUID,
-            lineUID,
-            intersections[0].point,
-            intersections[1].point,
-            {
-              color,
-              lineWidth,
-            }
-          );
+      drawLineSvg(
+        svgDrawingHelper,
+        annotationUID,
+        lineUID,
+        line[1],
+        line[2],
+        {
+          color,
+          lineWidth,
         }
-        if (
-          this.configuration.extendReferenceLines &&
-          intersections.length === 2
-        ) {
-          if (
-            this.configuration.extendReferenceLines &&
-            intersections.length === 2
-          ) {
-            // Sort intersections by distance from line start
-            const sortedIntersections = intersections
-              .map((intersection) => ({
-                ...intersection,
-                distance: vec2.distance(line[1], intersection.point),
-              }))
-              .sort((a, b) => a.distance - b.distance);
-
-            // Draw dashed lines in correct order
-            drawLineSvg(
-              svgDrawingHelper,
-              annotationUID,
-              lineUID + '_dashed_before',
-              line[1],
-              sortedIntersections[0].point,
-              { color, lineWidth, lineDash: [4, 4] }
-            );
-
-            drawLineSvg(
-              svgDrawingHelper,
-              annotationUID,
-              lineUID + '_dashed_after',
-              sortedIntersections[1].point,
-              line[2],
-              { color, lineWidth, lineDash: [4, 4] }
-            );
-          }
-        }
-      }
+      );
     });
 
     renderStatus = true;
