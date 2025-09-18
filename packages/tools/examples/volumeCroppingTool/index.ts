@@ -339,6 +339,13 @@ async function run(numViewports = getNumViewportsFromUrl()) {
       {
         mouseButton: MouseBindings.Wheel,
       },
+    ],
+  });
+
+  // Aggiunta del tool di rotazione alle viste ortogonali
+  toolGroup.addTool(TrackballRotateTool.toolName);
+  toolGroup.setToolActive(TrackballRotateTool.toolName, {
+    bindings: [
       {
         mouseButton: MouseBindings.Secondary,
       },

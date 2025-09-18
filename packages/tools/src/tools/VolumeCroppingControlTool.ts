@@ -306,11 +306,11 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const cropEnd = 1 - cropFactor / 2;
     this.toolCenter = [
       origin[0] +
-        ((cropStart + cropEnd) / 2) * (dimensions[0] - 1) * spacing[0],
+      ((cropStart + cropEnd) / 2) * (dimensions[0] - 1) * spacing[0],
       origin[1] +
-        ((cropStart + cropEnd) / 2) * (dimensions[1] - 1) * spacing[1],
+      ((cropStart + cropEnd) / 2) * (dimensions[1] - 1) * spacing[1],
       origin[2] +
-        ((cropStart + cropEnd) / 2) * (dimensions[2] - 1) * spacing[2],
+      ((cropStart + cropEnd) / 2) * (dimensions[2] - 1) * spacing[2],
     ];
     this.toolCenterMin = [
       origin[0] + cropStart * (dimensions[0] - 1) * spacing[0],
@@ -817,13 +817,13 @@ class VolumeCroppingControlTool extends AnnotationTool {
               annotation.data.handles.toolCenter = [
                 (annotation.data.handles.toolCenterMin[0] +
                   annotation.data.handles.toolCenterMax[0]) /
-                  2,
+                2,
                 (annotation.data.handles.toolCenterMin[1] +
                   annotation.data.handles.toolCenterMax[1]) /
-                  2,
+                2,
                 (annotation.data.handles.toolCenterMin[2] +
                   annotation.data.handles.toolCenterMax[2]) /
-                  2,
+                2,
               ];
             }
           });
@@ -879,13 +879,13 @@ class VolumeCroppingControlTool extends AnnotationTool {
             annotation.data.handles.toolCenter = [
               (annotation.data.handles.toolCenterMin[0] +
                 annotation.data.handles.toolCenterMax[0]) /
-                2,
+              2,
               (annotation.data.handles.toolCenterMin[1] +
                 annotation.data.handles.toolCenterMax[1]) /
-                2,
+              2,
               (annotation.data.handles.toolCenterMin[2] +
                 annotation.data.handles.toolCenterMax[2]) /
-                2,
+              2,
             ];
           }
         });
@@ -1274,6 +1274,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         otherViewport.id
       );
 
+      /*
       const direction = [0, 0, 0];
       vtkMath.cross(
         camera.viewPlaneNormal as [number, number, number],
@@ -1285,6 +1286,39 @@ class VolumeCroppingControlTool extends AnnotationTool {
         direction as [number, number, number],
         otherCanvasDiagonalLength
       );
+      */
+
+      // ...existing code...
+      // Scegli la normale del piano di clipping in base all'orientamento della reference line
+      let clippingNormal: [number, number, number];
+      switch ((annotation.data.orientation || '').toUpperCase()) {
+        case 'AXIAL':
+          clippingNormal = [0, 0, 1];
+          break;
+        case 'CORONAL':
+          clippingNormal = [0, 1, 0];
+          break;
+        case 'SAGITTAL':
+          clippingNormal = [1, 0, 0];
+          break;
+        default:
+          // fallback: usa la normale della camera
+          clippingNormal = otherCamera.viewPlaneNormal as [number, number, number];
+      }
+
+      // Calcola la direzione della reference line come un vettore ortogonale sia alla normale della viewport corrente che a quella del piano di clipping
+      const direction = [0, 0, 0];
+      vtkMath.cross(
+        camera.viewPlaneNormal as [number, number, number],
+        clippingNormal,
+        direction as [number, number, number]
+      );
+      vtkMath.normalize(direction as [number, number, number]);
+      vtkMath.multiplyScalar(
+        direction as [number, number, number],
+        otherCanvasDiagonalLength
+      );
+      // ...existing code...
 
       const pointWorld0: [number, number, number] = [0, 0, 0];
       vtkMath.add(
@@ -1399,6 +1433,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
       }
 
       // get color for the reference line using orientation
+
       const otherViewport = line[0];
       let orientation = null;
       // Try to get orientation from annotation data or viewportId
@@ -1427,6 +1462,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
       const lineColors = this.configuration.lineColors || {};
       const colorArr = lineColors[orientation] ||
         lineColors.unknown || [1.0, 0.0, 0.0]; // fallback to red
+
       // Convert [r,g,b] to rgb string if needed
       const color = Array.isArray(colorArr)
         ? `rgb(${colorArr.map((v) => Math.round(v * 255)).join(',')})`
