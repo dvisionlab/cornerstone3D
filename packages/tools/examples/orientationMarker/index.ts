@@ -16,6 +16,11 @@ import * as cornerstoneTools from '@cornerstonejs/tools';
 import addDropDownToToolbar from '../../../../utils/demo/helpers/addDropdownToToolbar';
 import setPetTransferFunction from '../../../../utils/demo/helpers/setPetTransferFunctionForVolumeActor';
 import { VolumeRotateTool } from '@cornerstonejs/tools';
+import ImageHelper from '@kitware/vtk.js/Common/Core/ImageHelper';
+import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import '@kitware/vtk.js/Rendering/Profiles/All'; // If you want all profiles
 
 async function getImageStacks() {
   const wadoRsRoot1 = 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb';
@@ -63,6 +68,65 @@ const ptToolGroupId = 'PT_TOOLGROUP_ID';
 let ctToolGroup;
 let ptToolGroup;
 
+function getConfig(value) {
+  return {
+    overlayMarkerType: OrientationMarkerTool.OVERLAY_MARKER_TYPES[value],
+    overlayConfiguration: {
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.ANNOTATED_CUBE]: {
+        faceProperties: {
+          xPlus: {
+            text: ['A', 'B', 'C', 'D', 'E'],
+            faceColor: '#ffff00',
+            faceRotation: 270,
+          },
+          xMinus: {
+            text: ['F', 'G', 'H', 'I', 'J'],
+            faceColor: '#ffff00',
+            faceRotation: 0,
+          },
+          yPlus: {
+            text: ['K', 'L', 'M', 'N', 'O'],
+            faceColor: '#00ffff',
+            fontColor: 'white',
+            faceRotation: 0,
+          },
+          yMinus: {
+            text: ['P', 'Q', 'R', 'S', 'T'],
+            faceColor: '#00ffff',
+            fontColor: 'white',
+            faceRotation: 180,
+          },
+          zPlus: {
+            text: ['U', 'V', 'W', 'X', 'Y'],
+            faceColor: '#ff00ff',
+            fontColor: 'white',
+          },
+          zMinus: {
+            text: ['A', 'F', 'P', 'R', 'L'],
+            faceColor: '#ff00ff',
+            fontColor: 'white',
+          },
+        },
+        defaultStyle: {
+          fontStyle: 'bold',
+          fontFamily: 'Arial',
+          fontColor: 'black',
+          fontSizeScale: (res) => res / 4,
+          faceColor: '#0000ff',
+          edgeThickness: 0.1,
+          edgeColor: 'black',
+          resolution: 400,
+        },
+      },
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.AXES]: {},
+      [OrientationMarkerTool.OVERLAY_MARKER_TYPES.CUSTOM]: {
+        polyDataURL:
+          'https://raw.githubusercontent.com/Slicer/Slicer/80ad0a04dacf134754459557bf2638c63f3d1d1b/Base/Logic/Resources/OrientationMarkers/Human.vtp',
+      },
+    },
+  };
+}
+
 addDropDownToToolbar({
   options: {
     values: Object.keys(OrientationMarkerTool.OVERLAY_MARKER_TYPES),
@@ -71,9 +135,10 @@ addDropDownToToolbar({
   onSelectedValueChange: (value) => {
     [ctToolGroup, ptToolGroup].forEach((toolGroup) => {
       toolGroup.setToolDisabled(OrientationMarkerTool.toolName);
-      toolGroup.setToolConfiguration(OrientationMarkerTool.toolName, {
-        overlayMarkerType: OrientationMarkerTool.OVERLAY_MARKER_TYPES[value],
-      });
+      toolGroup.setToolConfiguration(
+        OrientationMarkerTool.toolName,
+        getConfig(value)
+      );
 
       toolGroup.setToolEnabled(OrientationMarkerTool.toolName);
     });
@@ -285,6 +350,139 @@ async function run() {
 
   // Render the image
   renderingEngine.render();
+
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 400;
+  drawLetters(canvas, ['A', 'B', 'C', 'D', 'E'], 0);
+  canvas.getContext('2d').rotate(-Math.PI * (0 / 180.0)); // TODO face rotation
+
+  const newData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
+  console.log(newData);
+
+  window.re = renderingEngine;
+
+  // window.tx = renderingEngine.getViewports()[0].getWidgets()[0].getActor().getTextures()[0]
+
+  /*
+  const actor = renderingEngine.getViewports()[0].getWidgets()[0].getActor();
+  // const mapper = actor.getMapper()
+  // const texture = vtkTexture.newInstance();
+  const texture = actor.getTextures()[0]
+  // const vtkImage = ImageHelper.canvasToImageData(canvas);
+  const vtkImage = texture.getInputData(5).getPointData().getScalars().setData(new Uint8Array(newData.data));
+  // texture.getInputData().getPointData().getScalars().setData(newData.data);
+  // texture.setInputData(vtkImage, 5);
+  texture.modified();
+  // texture.setCanvas(canvas);
+  window.actor = actor;
+  // actor.removeAllTextures();
+  // actor.addTexture(texture);
+  actor.modified();
+  */
+
+  /*
+  const oldActor = renderingEngine.getViewports()[0].getWidgets()[0].getActor();
+  const oldTexture = oldActor.getTextures()[0]
+
+  const texture = vtkTexture.newInstance();
+  const vtkImage = ImageHelper.canvasToImageData(canvas);
+  texture.setInputData(vtkImage, 5);
+
+  const widget = renderingEngine.getViewports()[0].getWidgets()[0]
+  window.widget = widget;
+  const mapper = oldActor.getMapper();
+  const cubeSource = vtkCubeSource.newInstance({
+    generate3DTextureCoordinates: true,
+  });
+  mapper.setInputConnection(cubeSource.getOutputPort());
+
+  const actor = vtkActor.newInstance();
+  actor.setVisibility(true);
+  actor.setMapper(mapper);
+  // actor.addTexture(oldTexture);
+  actor.addTexture(texture);
+  actor.modified();
+
+  widget.setActor(actor);
+  widget.updateViewport();
+  */
 }
 
 run();
+
+/**
+ * Draws a cross-shaped arrangement of letters on the canvas.
+ * The letters are positioned as:
+ * [0] (top)
+ * [3] [1] [4] (middle row: left, center, right)
+ * [2] (bottom)
+ *
+ * @param {string[]} letters An array of 5 single-character strings
+ * in the order: [top, center, bottom, left, right].
+ */
+function drawLetters(canvas, letters, faceRotation) {
+  const ctx = canvas.getContext('2d');
+
+  // Clear the canvas before redrawing
+  // ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Fill the background with black
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Flip the canvas vertically
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+
+  // TODO rotate
+
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-Math.PI * (faceRotation / 180.0));
+  ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+  // Set text color
+  ctx.fillStyle = '#000000';
+
+  // Calculate the center of the canvas
+  const centerX = canvas.width / 2;
+  // Adjusted centerY to move the entire group down by a smaller percentage of canvas height
+  const centerY = canvas.height / 2 + canvas.height * 0.02; // Move down by 2% of canvas height
+
+  // Base font size for A, C, D, E (adjust dynamically)
+  const baseFontSize = (canvas.height / 3) * 0.7;
+
+  // Larger font size for B (the center letter)
+  const bFontSize = baseFontSize * 1.5; // B will be 50% larger than others
+
+  // Define spacing based on the larger 'B' font size to ensure enough room
+  const spacing = bFontSize * 1.0; // Adjust this multiplier for desired gap
+
+  // Draw the center letter (index 1 in the array) first with its larger font size
+  ctx.font = `${bFontSize}px Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letters[1], centerX, centerY); // Draw 'B'
+
+  // Now draw other letters, resetting font and adjusting positions relative to the center
+  ctx.font = `${baseFontSize}px Arial, sans-serif`;
+
+  // Position for the top letter (index 0)
+  const centerY_A = centerY - spacing;
+  ctx.fillText(letters[0], centerX, centerY_A); // Draw 'A'
+
+  // Position for the bottom letter (index 2)
+  const centerY_C = centerY + spacing;
+  ctx.fillText(letters[2], centerX, centerY_C); // Draw 'C'
+
+  // Position for the left letter (index 3)
+  const centerX_D = centerX - spacing;
+  ctx.fillText(letters[3], centerX_D, centerY); // Draw 'D'
+
+  // Position for the right letter (index 4)
+  const centerX_E = centerX + spacing;
+  ctx.fillText(letters[4], centerX_E, centerY); // Draw 'E'
+
+  ctx.restore();
+}
