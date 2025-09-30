@@ -816,14 +816,11 @@ class VolumeCroppingControlTool extends AnnotationTool {
               // Update the tool center as midpoint
               annotation.data.handles.toolCenter = [
                 (annotation.data.handles.toolCenterMin[0] +
-                  annotation.data.handles.toolCenterMax[0]) /
-                2,
+                  annotation.data.handles.toolCenterMax[0]) / 2,
                 (annotation.data.handles.toolCenterMin[1] +
-                  annotation.data.handles.toolCenterMax[1]) /
-                2,
+                  annotation.data.handles.toolCenterMax[1]) / 2,
                 (annotation.data.handles.toolCenterMin[2] +
-                  annotation.data.handles.toolCenterMax[2]) /
-                2,
+                  annotation.data.handles.toolCenterMax[2]) / 2,
               ];
             }
           });
@@ -1175,7 +1172,14 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     const data = viewportAnnotation.data;
     // Get all other annotations except the current viewport's
-    const otherViewportAnnotations = annotations;
+    const otherViewportAnnotations = annotations.filter(annotation => {
+      // Escludi l'annotazione corrente del viewport
+      if (!viewportAnnotation.isVirtual && !annotation.isVirtual &&
+          annotation.data.viewportId === viewportAnnotation.data.viewportId) {
+        return false;
+      }
+      return true;
+    });
 
     const volumeCroppingCenterCanvasMin = viewport.worldToCanvas(
       this.toolCenterMin
@@ -1196,6 +1200,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         'isVirtual' in annotation &&
         (annotation as { isVirtual?: boolean }).isVirtual === true;
       data.handles.toolCenter = this.toolCenter;
+
       let otherViewport,
         otherCamera,
         clientWidth,
@@ -1259,6 +1264,9 @@ class VolumeCroppingControlTool extends AnnotationTool {
         }
       } else {
         otherViewport = renderingEngine.getViewport(data.viewportId as string);
+        if (!otherViewport) {
+          return; // Skip se il viewport non esiste
+        }
         otherCamera = otherViewport.getCamera();
         clientWidth = otherViewport.canvas.clientWidth;
         clientHeight = otherViewport.canvas.clientHeight;
@@ -1274,137 +1282,162 @@ class VolumeCroppingControlTool extends AnnotationTool {
         otherViewport.id
       );
 
-      /*
-      const direction = [0, 0, 0];
-      vtkMath.cross(
-        camera.viewPlaneNormal as [number, number, number],
-        otherCamera.viewPlaneNormal as [number, number, number],
-        direction as [number, number, number]
-      );
-      vtkMath.normalize(direction as [number, number, number]);
-      vtkMath.multiplyScalar(
-        direction as [number, number, number],
-        otherCanvasDiagonalLength
-      );
-      */
-
-      // ...existing code...
-      // Scegli la normale del piano di clipping in base all'orientamento della reference line
-      let clippingNormal: [number, number, number];
-      switch ((annotation.data.orientation || '').toUpperCase()) {
-        case 'AXIAL':
-          clippingNormal = [0, 0, 1];
-          break;
-        case 'CORONAL':
-          clippingNormal = [0, 1, 0];
-          break;
-        case 'SAGITTAL':
-          clippingNormal = [1, 0, 0];
-          break;
-        default:
-          // fallback: usa la normale della camera
-          clippingNormal = otherCamera.viewPlaneNormal as [number, number, number];
+      // Se il viewport non è controllabile, salta
+      if (!otherViewportControllable) {
+        return;
       }
 
-      // Calcola la direzione della reference line come un vettore ortogonale sia alla normale della viewport corrente che a quella del piano di clipping
-      const direction = [0, 0, 0];
-      vtkMath.cross(
-        camera.viewPlaneNormal as [number, number, number],
-        clippingNormal,
-        direction as [number, number, number]
-      );
-      vtkMath.normalize(direction as [number, number, number]);
-      vtkMath.multiplyScalar(
-        direction as [number, number, number],
-        otherCanvasDiagonalLength
-      );
-      // ...existing code...
+      // Determina l'orientamento per calcolare gli assi corretti
+      const orientation = (annotation.data.orientation || '').toUpperCase();
 
-      const pointWorld0: [number, number, number] = [0, 0, 0];
-      vtkMath.add(
-        otherViewportCenterWorld as [number, number, number],
-        direction as [number, number, number],
-        pointWorld0
-      );
-      const pointWorld1: [number, number, number] = [0, 0, 0];
-      vtkMath.subtract(
-        otherViewportCenterWorld as [number, number, number],
-        direction as [number, number, number],
-        pointWorld1
-      );
+      // Definisci gli assi per ogni orientamento
+      let axes = [];
+      switch (orientation) {
+        case 'AXIAL':
+          axes = [
+            { normal: [1, 0, 0], name: 'X' }, // Asse X (linee verticali)
+            { normal: [0, 1, 0], name: 'Y' }  // Asse Y (linee orizzontali)
+          ];
+          break;
+        case 'CORONAL':
+          axes = [
+            { normal: [1, 0, 0], name: 'X' }, // Asse X
+            { normal: [0, 0, 1], name: 'Z' }  // Asse Z
+          ];
+          break;
+        case 'SAGITTAL':
+          axes = [
+            { normal: [0, 1, 0], name: 'Y' }, // Asse Y
+            { normal: [0, 0, 1], name: 'Z' }  // Asse Z
+          ];
+          break;
+        default:
+          // Fallback per orientamenti sconosciuti o virtual annotations
+          axes = [
+            { normal: [1, 0, 0], name: 'X' },
+            { normal: [0, 1, 0], name: 'Y' }
+          ];
+      }
 
-      const pointCanvas0 = viewport.worldToCanvas(pointWorld0 as Types.Point3);
-      const otherViewportCenterCanvas = viewport.worldToCanvas([
-        otherViewportCenterWorld[0] ?? 0,
-        otherViewportCenterWorld[1] ?? 0,
-        otherViewportCenterWorld[2] ?? 0,
-      ] as [number, number, number] as Types.Point3);
+      // Crea 4 linee: 2 per ogni asse (min e max)
+      axes.forEach((axis, axisIndex) => {
+        const clippingNormal = axis.normal as [number, number, number];
 
-      const canvasUnitVectorFromCenter = vec2.create();
-      vec2.subtract(
-        canvasUnitVectorFromCenter,
-        pointCanvas0,
-        otherViewportCenterCanvas
-      );
-      vec2.normalize(canvasUnitVectorFromCenter, canvasUnitVectorFromCenter);
+        // Calcola la direzione della reference line
+        const direction = [0, 0, 0];
+        vtkMath.cross(
+          camera.viewPlaneNormal as [number, number, number],
+          clippingNormal,
+          direction as [number, number, number]
+        );
+        vtkMath.normalize(direction as [number, number, number]);
+        vtkMath.multiplyScalar(
+          direction as [number, number, number],
+          otherCanvasDiagonalLength
+        );
 
-      const canvasVectorFromCenterLong = vec2.create();
-      vec2.scale(
-        canvasVectorFromCenterLong,
-        canvasUnitVectorFromCenter,
-        canvasDiagonalLength * 100
-      );
+        const pointWorld0: [number, number, number] = [0, 0, 0];
+        vtkMath.add(
+          otherViewportCenterWorld as [number, number, number],
+          direction as [number, number, number],
+          pointWorld0
+        );
+        const pointWorld1: [number, number, number] = [0, 0, 0];
+        vtkMath.subtract(
+          otherViewportCenterWorld as [number, number, number],
+          direction as [number, number, number],
+          pointWorld1
+        );
 
-      // For min
-      const refLinesCenterMin = otherViewportControllable
-        ? vec2.clone(volumeCroppingCenterCanvasMin)
-        : vec2.clone(otherViewportCenterCanvas);
-      const refLinePointMinOne = vec2.create();
-      const refLinePointMinTwo = vec2.create();
-      vec2.add(
-        refLinePointMinOne,
-        refLinesCenterMin,
-        canvasVectorFromCenterLong
-      );
-      vec2.subtract(
-        refLinePointMinTwo,
-        refLinesCenterMin,
-        canvasVectorFromCenterLong
-      );
-      liangBarksyClip(refLinePointMinOne, refLinePointMinTwo, canvasBox);
-      referenceLines.push([
-        otherViewport,
-        refLinePointMinOne,
-        refLinePointMinTwo,
-        'min',
-      ]);
+        const pointCanvas0 = viewport.worldToCanvas(pointWorld0 as Types.Point3);
+        const otherViewportCenterCanvas = viewport.worldToCanvas([
+          otherViewportCenterWorld[0] ?? 0,
+          otherViewportCenterWorld[1] ?? 0,
+          otherViewportCenterWorld[2] ?? 0,
+        ] as [number, number, number] as Types.Point3);
 
-      // For max center
-      const refLinesCenterMax = otherViewportControllable
-        ? vec2.clone(volumeCroppingCenterCanvasMax)
-        : vec2.clone(otherViewportCenterCanvas);
-      const refLinePointMaxOne = vec2.create();
-      const refLinePointMaxTwo = vec2.create();
-      vec2.add(
-        refLinePointMaxOne,
-        refLinesCenterMax,
-        canvasVectorFromCenterLong
-      );
-      vec2.subtract(
-        refLinePointMaxTwo,
-        refLinesCenterMax,
-        canvasVectorFromCenterLong
-      );
-      liangBarksyClip(refLinePointMaxOne, refLinePointMaxTwo, canvasBox);
-      referenceLines.push([
-        otherViewport,
-        refLinePointMaxOne,
-        refLinePointMaxTwo,
-        'max',
-      ]);
+        const canvasUnitVectorFromCenter = vec2.create();
+        vec2.subtract(
+          canvasUnitVectorFromCenter,
+          pointCanvas0,
+          otherViewportCenterCanvas
+        );
+        vec2.normalize(canvasUnitVectorFromCenter, canvasUnitVectorFromCenter);
+
+        const canvasVectorFromCenterLong = vec2.create();
+        vec2.scale(
+          canvasVectorFromCenterLong,
+          canvasUnitVectorFromCenter,
+          canvasDiagonalLength * 100
+        );
+
+        // Determina quale componente del toolCenter usare per questo asse
+        let minCenter, maxCenter;
+        if (axis.name === 'X') {
+          minCenter = viewport.worldToCanvas([this.toolCenterMin[0], otherViewportCenterWorld[1], otherViewportCenterWorld[2]]);
+          maxCenter = viewport.worldToCanvas([this.toolCenterMax[0], otherViewportCenterWorld[1], otherViewportCenterWorld[2]]);
+        } else if (axis.name === 'Y') {
+          minCenter = viewport.worldToCanvas([otherViewportCenterWorld[0], this.toolCenterMin[1], otherViewportCenterWorld[2]]);
+          maxCenter = viewport.worldToCanvas([otherViewportCenterWorld[0], this.toolCenterMax[1], otherViewportCenterWorld[2]]);
+        } else if (axis.name === 'Z') {
+          minCenter = viewport.worldToCanvas([otherViewportCenterWorld[0], otherViewportCenterWorld[1], this.toolCenterMin[2]]);
+          maxCenter = viewport.worldToCanvas([otherViewportCenterWorld[0], otherViewportCenterWorld[1], this.toolCenterMax[2]]);
+        }
+
+        // Linea MIN per questo asse
+        const refLinesCenterMin = vec2.clone(minCenter);
+        const refLinePointMinOne = vec2.create();
+        const refLinePointMinTwo = vec2.create();
+        vec2.add(
+          refLinePointMinOne,
+          refLinesCenterMin,
+          canvasVectorFromCenterLong
+        );
+        vec2.subtract(
+          refLinePointMinTwo,
+          refLinesCenterMin,
+          canvasVectorFromCenterLong
+        );
+        liangBarksyClip(refLinePointMinOne, refLinePointMinTwo, canvasBox);
+        referenceLines.push([
+          otherViewport,
+          refLinePointMinOne,
+          refLinePointMinTwo,
+          'min',
+          axisIndex,
+          axis.name
+        ]);
+
+        // Linea MAX per questo asse
+        const refLinesCenterMax = vec2.clone(maxCenter);
+        const refLinePointMaxOne = vec2.create();
+        const refLinePointMaxTwo = vec2.create();
+        vec2.add(
+          refLinePointMaxOne,
+          refLinesCenterMax,
+          canvasVectorFromCenterLong
+        );
+        vec2.subtract(
+          refLinePointMaxTwo,
+          refLinesCenterMax,
+          canvasVectorFromCenterLong
+        );
+        liangBarksyClip(refLinePointMaxOne, refLinePointMaxTwo, canvasBox);
+        referenceLines.push([
+          otherViewport,
+          refLinePointMaxOne,
+          refLinePointMaxTwo,
+          'max',
+          axisIndex,
+          axis.name
+        ]);
+      });
     });
 
     data.referenceLines = referenceLines;
+
+    // Debug: aggiungi log per verificare quante linee sono state create
+    console.log(`Viewport ${viewport.id}: Created ${referenceLines.length} reference lines`);
 
     const viewportColor = this._getReferenceLineColor(viewport.id);
     const color =
@@ -1503,37 +1536,32 @@ class VolumeCroppingControlTool extends AnnotationTool {
           this.configuration.extendReferenceLines &&
           intersections.length === 2
         ) {
-          if (
-            this.configuration.extendReferenceLines &&
-            intersections.length === 2
-          ) {
-            // Sort intersections by distance from line start
-            const sortedIntersections = intersections
-              .map((intersection) => ({
-                ...intersection,
-                distance: vec2.distance(line[1], intersection.point),
-              }))
-              .sort((a, b) => a.distance - b.distance);
+          // Sort intersections by distance from line start
+          const sortedIntersections = intersections
+            .map((intersection) => ({
+              ...intersection,
+              distance: vec2.distance(line[1], intersection.point),
+            }))
+            .sort((a, b) => a.distance - b.distance);
 
-            // Draw dashed lines in correct order
-            drawLineSvg(
-              svgDrawingHelper,
-              annotationUID,
-              lineUID + '_dashed_before',
-              line[1],
-              sortedIntersections[0].point,
-              { color, lineWidth, lineDash: [4, 4] }
-            );
+          // Draw dashed lines in correct order
+          drawLineSvg(
+            svgDrawingHelper,
+            annotationUID,
+            lineUID + '_dashed_before',
+            line[1],
+            sortedIntersections[0].point,
+            { color, lineWidth, lineDash: [4, 4] }
+          );
 
-            drawLineSvg(
-              svgDrawingHelper,
-              annotationUID,
-              lineUID + '_dashed_after',
-              sortedIntersections[1].point,
-              line[2],
-              { color, lineWidth, lineDash: [4, 4] }
-            );
-          }
+          drawLineSvg(
+            svgDrawingHelper,
+            annotationUID,
+            lineUID + '_dashed_after',
+            sortedIntersections[1].point,
+            line[2],
+            { color, lineWidth, lineDash: [4, 4] }
+          );
         }
       }
     });
@@ -1842,7 +1870,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const filteredToolAnnotations =
       this.filterInteractableAnnotationsForElement(element, annotations);
 
-    // viewport Annotation
     const viewportAnnotation = filteredToolAnnotations[0];
     if (!viewportAnnotation) {
       return;
@@ -1851,40 +1878,20 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const { handles } = viewportAnnotation.data;
 
     if (handles.activeOperation === OPERATION.DRAG) {
-      /*
-      if (handles.activeType === 'min') {
-        this.toolCenterMin[0] += delta[0];
-        this.toolCenterMin[1] += delta[1];
-        this.toolCenterMin[2] += delta[2];
-      } else if (handles.activeType === 'max') {
-        this.toolCenterMax[0] += delta[0];
-        this.toolCenterMax[1] += delta[1];
-        this.toolCenterMax[2] += delta[2];
-      } else {
-        this.toolCenter[0] += delta[0];
-        this.toolCenter[1] += delta[1];
-        this.toolCenter[2] += delta[2];
-      }
-        */
-      // Determina quale linea è attiva (asse e min/max)
       const activeType = handles.activeType; // 'min' o 'max'
-      // Determina l'orientamento della viewport
-      const orientation = viewportAnnotation.data.orientation?.toUpperCase();
+      const axisName = handles.activeAxisName; // 'X', 'Y', or 'Z'
 
       // Applica il delta solo sull'asse corretto
       if (activeType === 'min' || activeType === 'max') {
-        // Determina quale asse modificare in base all'orientamento e alla linea selezionata
         let axis = -1;
-        if (orientation === 'AXIAL') {
-          // AXIAL: linee XMIN/XMAX (asse 0), YMIN/YMAX (asse 1)
-          axis = handles.activeLineIndex === 0 ? 0 : 1;
-        } else if (orientation === 'CORONAL') {
-          // CORONAL: XMIN/XMAX (asse 0), ZMIN/ZMAX (asse 2)
-          axis = handles.activeLineIndex === 0 ? 0 : 2;
-        } else if (orientation === 'SAGITTAL') {
-          // SAGITTAL: YMIN/YMAX (asse 1), ZMIN/ZMAX (asse 2)
-          axis = handles.activeLineIndex === 0 ? 1 : 2;
+        if (axisName === 'X') {
+          axis = 0;
+        } else if (axisName === 'Y') {
+          axis = 1;
+        } else if (axisName === 'Z') {
+          axis = 2;
         }
+
         if (axis !== -1) {
           if (activeType === 'min') {
             this.toolCenterMin[axis] += delta[axis];
@@ -1966,21 +1973,17 @@ class VolumeCroppingControlTool extends AnnotationTool {
   _pointNearTool(element, annotation, canvasCoords, proximity) {
     const { data } = annotation;
 
-    // You must have referenceLines available in annotation.data.
-    // If not, you can recompute them here or store them in renderAnnotation.
-    // For this example, let's assume you store them as data.referenceLines.
     const referenceLines = data.referenceLines;
-
     const viewportIdArray = [];
 
     if (referenceLines) {
       for (let i = 0; i < referenceLines.length; ++i) {
-        // Each line: [otherViewport, refLinePointOne, refLinePointMinOne, ...]
         const otherViewport = referenceLines[i][0];
-        // First segment
         const start1 = referenceLines[i][1];
         const end1 = referenceLines[i][2];
         const type = referenceLines[i][3]; // 'min' or 'max'
+        const axisIndex = referenceLines[i][4]; // 0 o 1
+        const axisName = referenceLines[i][5]; // 'X', 'Y', or 'Z'
 
         const distance1 = lineSegment.distanceToPoint(start1, end1, [
           canvasCoords[0],
@@ -1991,7 +1994,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
           viewportIdArray.push(otherViewport.id);
           data.handles.activeOperation = 1; // DRAG
           data.handles.activeType = type;
-          data.handles.activeLineIndex = i % 2; // 0: prima linea (X o Y), 1: seconda linea (Y o Z)
+          data.handles.activeLineIndex = axisIndex;
+          data.handles.activeAxisName = axisName; // Aggiungi il nome dell'asse
         }
       }
     }
