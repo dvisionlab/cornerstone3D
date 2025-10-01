@@ -410,6 +410,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     console.debug(
       `VolumeCroppingControlTool: onSetToolInactive called for tool ${this.getToolName()}`
     );
+    this._unsubscribeFromCameraModified(this._getViewportsInfo());
   }
 
   onSetToolActive() {
@@ -431,6 +432,10 @@ class VolumeCroppingControlTool extends AnnotationTool {
         break;
       }
     }
+
+    // this._unsubscribeFromCameraModified(viewportsInfo); // Per sicurezza
+    this._subscribeToCameraModified(viewportsInfo);
+
     if (!anyAnnotationExists) {
       this._unsubscribeToViewportNewVolumeSet(viewportsInfo);
       this._subscribeToViewportNewVolumeSet(viewportsInfo);
@@ -482,6 +487,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const viewportsInfo = this._getViewportsInfo();
 
     this._unsubscribeToViewportNewVolumeSet(viewportsInfo);
+
+    this._unsubscribeFromCameraModified(viewportsInfo);
 
     // has no value when the tool is disabled
     // since viewports can change (zoom, pan, scroll)
@@ -1069,8 +1076,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
         annotation.highlighted = !highlighted;
         imageNeedsUpdate = true;
       }
-
-      console.log(annotation, annotation.highlighted, near);
     }
 
     return imageNeedsUpdate;
@@ -1438,12 +1443,9 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     data.referenceLines = referenceLines;
 
-    // Debug: aggiungi log per verificare quante linee sono state create
-    console.log(`Viewport ${viewport.id}: Created ${referenceLines.length} reference lines`);
-
-    const viewportColor = this._getReferenceLineColor(viewport.id);
+    const viewportColor = undefined // this._getReferenceLineColor(viewport.id);
     const color =
-      viewportColor !== undefined ? viewportColor : 'rgb(200, 200, 200)';
+      viewportColor !== undefined ? viewportColor : 'rgba(255, 255, 255, 1)';
 
     referenceLines.forEach((line, lineIndex) => {
       // Calculate intersections with other lines in this viewport
@@ -1535,6 +1537,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
             }
           );
         }
+
+        // no dashed lines
         if (
           this.configuration.extendReferenceLines &&
           intersections.length === 2
@@ -1688,6 +1692,81 @@ class VolumeCroppingControlTool extends AnnotationTool {
       seriesInstanceUID: this.seriesInstanceUID,
     });
   };
+
+  _handleCameraModified = (evt: EventTypes.CameraModifiedEvent) => {
+    // Non fare nulla se stiamo già interagendo attivamente con il tool
+    if (state.isInteractingWithTool) {
+      return;
+    }
+
+    const viewportsInfo = this._getViewportsInfo();
+    let isAnyViewportRotated = false;
+
+    for (const { renderingEngineId, viewportId } of viewportsInfo) {
+      const enabledElement = getEnabledElementByIds(
+        viewportId,
+        renderingEngineId
+      );
+
+      if (enabledElement) {
+        const { viewport } = enabledElement;
+        const orientation = this._getOrientationFromNormal(
+          viewport.getCamera().viewPlaneNormal
+        );
+
+        // Se l'orientamento è null, la vista è ruotata/obliqua
+        if (orientation === null) {
+          isAnyViewportRotated = true;
+          break; // Trovata una vista ruotata, non serve controllare le altre
+        }
+      }
+    }
+
+    const toolGroup = getToolGroup(this.toolGroupId);
+    if (!toolGroup) {
+      return;
+    }
+
+    console.log('MODE', this.mode)
+
+    // Se una viewport è ruotata e il tool è attualmente abilitato, disabilitalo.
+    if (isAnyViewportRotated && this.mode === 'Active') {
+        console.warn('Una viewport è stata ruotata. Disabilitazione del VolumeCroppingControlTool.');
+        toolGroup.setToolEnabled(this.getToolName());
+    }
+    // Opzionale: riabilita il tool se nessuna viewport è più ruotata
+    else if (!isAnyViewportRotated && this.mode === 'Enabled') {
+        console.log('Tutte le viewport sono tornate a una vista canonica. Riabilitazione del VolumeCroppingControlTool.');
+        toolGroup.setToolActive(this.getToolName());
+    }
+  };
+
+   _subscribeToCameraModified(viewports) {
+    viewports.forEach(({ viewportId, renderingEngineId }) => {
+      console.log('Subscribing to CAMERA_MODIFIED for viewport', viewportId, renderingEngineId);
+      const {viewport} = getEnabledElementByIds(
+        viewportId,
+        renderingEngineId
+      );
+      viewport.element.addEventListener(
+        Enums.Events.CAMERA_MODIFIED,
+        this._handleCameraModified
+      );
+    });
+  }
+
+  _unsubscribeFromCameraModified(viewports) {
+    viewports.forEach(({ viewportId, renderingEngineId }) => {
+      const { viewport } = getEnabledElementByIds(
+        viewportId,
+        renderingEngineId
+      );
+      viewport.element.removeEventListener(
+        Enums.Events.CAMERA_MODIFIED,
+        this._handleCameraModified
+      );
+    });
+  }
 
   _unsubscribeToViewportNewVolumeSet(viewportsInfo) {
     viewportsInfo.forEach(({ viewportId, renderingEngineId }) => {
@@ -1994,8 +2073,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
           canvasCoords[0],
           canvasCoords[1],
         ]);
-
-        console.log(`Distance to line (${type} ${axisName}) in viewport ${otherViewport.id}: ${distance1}`);
 
         if (distance1 <= proximity) {
           viewportIdArray.push(otherViewport.id);
