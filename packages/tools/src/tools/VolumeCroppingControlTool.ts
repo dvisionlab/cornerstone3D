@@ -87,7 +87,7 @@ interface VolumeCroppingAnnotation extends Annotation {
 }
 
 function defaultReferenceLineColor() {
-  return 'rgb(0, 200, 0)';
+  return 'rgba(255, 255, 255, 1)';
 }
 
 function defaultReferenceLineControllable() {
@@ -214,16 +214,16 @@ class VolumeCroppingControlTool extends AnnotationTool {
           y: null,
         },
         extendReferenceLines: true,
-        initialCropFactor: 0.2,
+        initialCropFactor: 0.05,
         mobile: {
           enabled: false,
           opacity: 0.8,
         },
         lineColors: {
-          AXIAL: [1.0, 0.0, 0.0], //  Red for axial
-          CORONAL: [0.0, 1.0, 0.0], // Green for coronal
-          SAGITTAL: [1.0, 1.0, 0.0], // Yellow for sagittal
-          UNKNOWN: [0.0, 0.0, 1.0], // Blue for unknown
+          AXIAL: [1.0, 1.0, 1.0], //  Red for axial
+          CORONAL: [1.0, 1.0, 1.0], // Green for coronal
+          SAGITTAL: [1.0, 1.0, 1.0], // Yellow for sagittal
+          UNKNOWN: [1.0, 1.0, 1.0], // Blue for unknown
         },
         lineWidth: 1.5,
         lineWidthActive: 2.5,
@@ -267,7 +267,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         const spacing = imageData.getSpacing();
         const origin = imageData.getOrigin();
         this.seriesInstanceUID = imageData.seriesInstanceUID || 'unknown';
-        const cropFactor = this.configuration.initialCropFactor ?? 0.2;
+        const cropFactor = this.configuration.initialCropFactor ?? 0.05;
         this.toolCenter = [
           origin[0] + cropFactor * (dimensions[0] - 1) * spacing[0],
           origin[1] + cropFactor * (dimensions[1] - 1) * spacing[1],
@@ -301,7 +301,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const dimensions = imageData.getDimensions();
     const spacing = imageData.getSpacing();
     const origin = imageData.getOrigin();
-    const cropFactor = this.configuration.initialCropFactor ?? 0.2;
+    const cropFactor = this.configuration.initialCropFactor ?? 0.05;
     const cropStart = cropFactor / 2;
     const cropEnd = 1 - cropFactor / 2;
     this.toolCenter = [
@@ -1534,42 +1534,43 @@ class VolumeCroppingControlTool extends AnnotationTool {
             {
               color,
               lineWidth,
+              lineDash: this.mode === "Active" ? [4,4] : undefined
             }
           );
         }
 
         // no dashed lines
-        if (
-          this.configuration.extendReferenceLines &&
-          intersections.length === 2
-        ) {
-          // Sort intersections by distance from line start
-          const sortedIntersections = intersections
-            .map((intersection) => ({
-              ...intersection,
-              distance: vec2.distance(line[1], intersection.point),
-            }))
-            .sort((a, b) => a.distance - b.distance);
+        // if (
+        //   this.configuration.extendReferenceLines &&
+        //   intersections.length === 2
+        // ) {
+        //   // Sort intersections by distance from line start
+        //   const sortedIntersections = intersections
+        //     .map((intersection) => ({
+        //       ...intersection,
+        //       distance: vec2.distance(line[1], intersection.point),
+        //     }))
+        //     .sort((a, b) => a.distance - b.distance);
 
-          // Draw dashed lines in correct order
-          drawLineSvg(
-            svgDrawingHelper,
-            annotationUID,
-            lineUID + '_dashed_before',
-            line[1],
-            sortedIntersections[0].point,
-            { color, lineWidth, lineDash: [4, 4] }
-          );
+        //   // Draw dashed lines in correct order
+        //   drawLineSvg(
+        //     svgDrawingHelper,
+        //     annotationUID,
+        //     lineUID + '_dashed_before',
+        //     line[1],
+        //     sortedIntersections[0].point,
+        //     { color, lineWidth, lineDash: [4, 4] }
+        //   );
 
-          drawLineSvg(
-            svgDrawingHelper,
-            annotationUID,
-            lineUID + '_dashed_after',
-            sortedIntersections[1].point,
-            line[2],
-            { color, lineWidth, lineDash: [4, 4] }
-          );
-        }
+        //   drawLineSvg(
+        //     svgDrawingHelper,
+        //     annotationUID,
+        //     lineUID + '_dashed_after',
+        //     sortedIntersections[1].point,
+        //     line[2],
+        //     { color, lineWidth, lineDash: [4, 4] }
+        //   );
+        // }
       }
     });
 

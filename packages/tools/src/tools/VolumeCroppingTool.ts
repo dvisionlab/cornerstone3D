@@ -235,7 +235,7 @@ class VolumeCroppingTool extends BaseTool {
           enabled: false,
           opacity: 0.8,
         },
-        initialCropFactor: 0.08,
+        initialCropFactor: 0.05,
         sphereColors: {
           SAGITTAL: [1.0, 1.0, 0.0], //  Yellow for sagittal (X-axis)
           CORONAL: [0.0, 1.0, 0.0], // Green for coronal (Y-axis)
@@ -1087,7 +1087,7 @@ class VolumeCroppingTool extends BaseTool {
     }
     this.seriesInstanceUID = imageData.seriesInstanceUID || 'unknown';
     const worldBounds = imageData.getBounds(); // Already in world coordinates
-    const cropFactor = this.configuration.initialCropFactor || 0.1;
+    const cropFactor = this.configuration.initialCropFactor || 0.05;
 
     // Calculate cropping bounds using world bounds
     const xRange = worldBounds[1] - worldBounds[0];
