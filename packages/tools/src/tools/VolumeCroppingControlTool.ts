@@ -1069,6 +1069,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
         annotation.highlighted = !highlighted;
         imageNeedsUpdate = true;
       }
+
+      console.log(annotation, annotation.highlighted, near);
     }
 
     return imageNeedsUpdate;
@@ -1513,6 +1515,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         data.handles.activeOperation !== null &&
         data.handles.activeOperation === OPERATION.DRAG &&
         selectedViewportId;
+
       if (lineActive) {
         lineWidth = this.configuration.activeLineWidth ?? 2.5;
       }
@@ -1976,6 +1979,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const referenceLines = data.referenceLines;
     const viewportIdArray = [];
 
+    let isNear = false;
+
     if (referenceLines) {
       for (let i = 0; i < referenceLines.length; ++i) {
         const otherViewport = referenceLines[i][0];
@@ -1990,12 +1995,15 @@ class VolumeCroppingControlTool extends AnnotationTool {
           canvasCoords[1],
         ]);
 
+        console.log(`Distance to line (${type} ${axisName}) in viewport ${otherViewport.id}: ${distance1}`);
+
         if (distance1 <= proximity) {
           viewportIdArray.push(otherViewport.id);
           data.handles.activeOperation = 1; // DRAG
           data.handles.activeType = type;
           data.handles.activeLineIndex = axisIndex;
           data.handles.activeAxisName = axisName; // Aggiungi il nome dell'asse
+          isNear = true;
         }
       }
     }
@@ -2005,7 +2013,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     this.editData = {
       annotation,
     };
-    return data.handles.activeOperation === 1 ? true : false;
+    return isNear;
   }
 }
 
