@@ -126,8 +126,7 @@ const OPERATION = {
  *     SAGITTAL: [1.0, 1.0, 0.0], // Yellow for sagittal views
  *   },
  *   lineWidth: 2.0,
- *   extendReferenceLines: true,
- *   viewportIndicators: true
+ *   extendReferenceLines: true
  * });
  *
  * // Activate the tool
@@ -150,14 +149,6 @@ const OPERATION = {
  * @property {Function} _getReferenceLineControllable - Optional callback to determine if reference lines are interactive per viewport
  *
  * @configuration
- * @property {boolean} viewportIndicators - Whether to show colored circle indicators in viewport corners (default: false)
- * @property {Object} viewportIndicatorsConfig - Configuration for viewport indicators
- * @property {number} viewportIndicatorsConfig.radius - Radius of indicator circles in pixels (default: 5)
- * @property {number|null} viewportIndicatorsConfig.x - X position offset, null for auto-positioning
- * @property {number|null} viewportIndicatorsConfig.y - Y position offset, null for auto-positioning
- * @property {number} viewportIndicatorsConfig.xOffset - X position as fraction of viewport width (default: 0.95)
- * @property {number} viewportIndicatorsConfig.yOffset - Y position as fraction of viewport height (default: 0.05)
- * @property {number} viewportIndicatorsConfig.circleRadius - Circle radius as fraction of diagonal length
  * @property {boolean} extendReferenceLines - Whether to extend reference lines beyond intersection points with dashed lines (default: true)
  * @property {number} initialCropFactor - Initial cropping factor as percentage of volume bounds (default: 0.2)
  * @property {Object} mobile - Mobile-specific configuration
@@ -207,12 +198,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
       configuration: {
         // renders a colored circle on top right of the viewports whose color
         // matches the color of the reference line
-        viewportIndicators: false,
-        viewportIndicatorsConfig: {
-          radius: 5,
-          x: null,
-          y: null,
-        },
         extendReferenceLines: true,
         initialCropFactor: 0.05,
         mobile: {
@@ -1575,29 +1560,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     });
 
     renderStatus = true;
-
-    if (this.configuration.viewportIndicators) {
-      const { viewportIndicatorsConfig } = this.configuration;
-      const xOffset = viewportIndicatorsConfig?.xOffset || 0.95;
-      const yOffset = viewportIndicatorsConfig?.yOffset || 0.05;
-      const referenceColorCoordinates = [
-        clientWidth * xOffset,
-        clientHeight * yOffset,
-      ];
-
-      const circleRadius =
-        viewportIndicatorsConfig?.circleRadius || canvasDiagonalLength * 0.01;
-
-      const circleUID = '0';
-      drawCircleSvg(
-        svgDrawingHelper,
-        annotationUID,
-        circleUID,
-        referenceColorCoordinates as Types.Point2,
-        circleRadius,
-        { color, fill: color }
-      );
-    }
 
     return renderStatus;
   };
