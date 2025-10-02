@@ -107,7 +107,6 @@ const OPERATION = {
  * // Configure with custom settings
  * toolGroup.setToolConfiguration(VolumeCroppingControlTool.toolName, {
  *   lineWidth: 2.0,
- *   extendReferenceLines: true
  * });
  *
  * // Activate the tool
@@ -128,11 +127,7 @@ const OPERATION = {
  * @property {Function} _getReferenceLineColor - Optional callback to determine reference line color per viewport
  *
  * @configuration
- * @property {boolean} extendReferenceLines - Whether to extend reference lines beyond intersection points with dashed lines (default: true)
  * @property {number} initialCropFactor - Initial cropping factor as percentage of volume bounds (default: 0.2)
- * @property {Object} mobile - Mobile-specific configuration
- * @property {boolean} mobile.enabled - Enable mobile touch interactions (default: false)
- * @property {number} mobile.opacity - Opacity for mobile interactions (default: 0.8)
  * @property {number} lineWidth - Default width of reference lines in pixels (default: 1.5)
  * @property {number} lineWidthActive - Width of reference lines when actively dragging in pixels (default: 2.5)
  * @property {number} activeLineWidth - Alias for lineWidthActive for backward compatibility
@@ -147,6 +142,21 @@ const OPERATION = {
  * - Requires volume data to be loaded before activation
  * - Limited to orthogonal viewport orientations (axial, coronal, sagittal)l
  */
+const AXIS_MAP = {
+  AXIAL: [
+    { normal: [1, 0, 0], name: 'X' },
+    { normal: [0, 1, 0], name: 'Y' },
+  ],
+  CORONAL: [
+    { normal: [1, 0, 0], name: 'X' },
+    { normal: [0, 0, 1], name: 'Z' },
+  ],
+  SAGITTAL: [
+    { normal: [0, 1, 0], name: 'Y' },
+    { normal: [0, 0, 1], name: 'Z' },
+  ],
+};
+
 class VolumeCroppingControlTool extends AnnotationTool {
   static toolName;
   seriesInstanceUID?: string;
@@ -167,14 +177,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     defaultToolProps: ToolProps = {
       supportedInteractionTypes: ['Mouse'],
       configuration: {
-        // renders a colored circle on top right of the viewports whose color
-        // matches the color of the reference line
-        extendReferenceLines: true,
         initialCropFactor: 0.05,
-        mobile: {
-          enabled: false,
-          opacity: 0.8,
-        },
         lineWidth: 1.5,
         lineWidthActive: 2.5,
       },
@@ -819,12 +822,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
         continue;
       }
 
-      const previousActiveOperation = data.handles.activeOperation;
-      const previousActiveViewportIds =
-        data.activeViewportIds && data.activeViewportIds.length > 0
-          ? [...data.activeViewportIds]
-          : [];
-
       // This init are necessary, because when we move the mouse they are not cleaned by _endCallback
       data.activeViewportIds = [];
       let near = false;
@@ -960,33 +957,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
       const orientation = (annotation.data.orientation || '').toUpperCase();
 
       // Definisci gli assi per ogni orientamento
-      let axes = [];
-      switch (orientation) {
-        case 'AXIAL':
-          axes = [
-            { normal: [1, 0, 0], name: 'X' }, // Asse X (linee verticali)
-            { normal: [0, 1, 0], name: 'Y' }  // Asse Y (linee orizzontali)
-          ];
-          break;
-        case 'CORONAL':
-          axes = [
-            { normal: [1, 0, 0], name: 'X' }, // Asse X
-            { normal: [0, 0, 1], name: 'Z' }  // Asse Z
-          ];
-          break;
-        case 'SAGITTAL':
-          axes = [
-            { normal: [0, 1, 0], name: 'Y' }, // Asse Y
-            { normal: [0, 0, 1], name: 'Z' }  // Asse Z
-          ];
-          break;
-        default:
-          // Fallback per orientamenti sconosciuti
-          axes = [
-            { normal: [1, 0, 0], name: 'X' },
-            { normal: [0, 1, 0], name: 'Y' }
-          ];
-      }
+      const axes = AXIS_MAP[orientation] || AXIS_MAP['AXIAL'];
 
       // Crea 4 linee: 2 per ogni asse (min e max)
       axes.forEach((axis, axisIndex) => {
@@ -1212,7 +1183,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     });
   };
 
-  _handleCameraModified = (evt: EventTypes.CameraModifiedEvent) => {
+  _handleCameraModified = (evt: Types.EventTypes.CameraModifiedEvent) => {
     // Non fare nulla se stiamo già interagendo attivamente con il tool
     if (state.isInteractingWithTool) {
       return;
@@ -1317,82 +1288,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     });
   }
 
-  _getAnnotationsForViewportsWithDifferentCameras = (
-    enabledElement,
-    annotations
-  ) => {
-    const { viewportId, renderingEngine, viewport } = enabledElement;
-
-    const otherViewportAnnotations = annotations.filter(
-      (annotation) => annotation.data.viewportId !== viewportId
-    );
-
-    if (!otherViewportAnnotations || !otherViewportAnnotations.length) {
-      return [];
-    }
-
-    const camera = viewport.getCamera();
-    const { viewPlaneNormal, position } = camera;
-
-    const viewportsWithDifferentCameras = otherViewportAnnotations.filter(
-      (annotation) => {
-        const { viewportId } = annotation.data;
-        const targetViewport = renderingEngine.getViewport(viewportId);
-        const cameraOfTarget = targetViewport.getCamera();
-
-        return !(
-          csUtils.isEqual(
-            cameraOfTarget.viewPlaneNormal,
-            viewPlaneNormal,
-            1e-2
-          ) && csUtils.isEqual(cameraOfTarget.position, position, 1)
-        );
-      }
-    );
-
-    return viewportsWithDifferentCameras;
-  };
-
-  _filterViewportWithSameOrientation = (
-    enabledElement,
-    referenceAnnotation,
-    annotations
-  ) => {
-    const { renderingEngine } = enabledElement;
-    const { data } = referenceAnnotation;
-    const viewport = renderingEngine.getViewport(data.viewportId);
-
-    if (!annotations || !annotations.length) {
-      return [];
-    }
-
-    const camera = viewport.getCamera();
-    const viewPlaneNormal = camera.viewPlaneNormal;
-    vtkMath.normalize(viewPlaneNormal);
-
-    const otherViewportsAnnotationsWithSameCameraDirection =
-      annotations.filter((annotation) => {
-        const { viewportId } = annotation.data;
-        const otherViewport = renderingEngine.getViewport(viewportId);
-        const otherCamera = otherViewport.getCamera();
-        const otherViewPlaneNormal = otherCamera.viewPlaneNormal;
-        vtkMath.normalize(otherViewPlaneNormal);
-
-        return (
-          csUtils.isEqual(viewPlaneNormal, otherViewPlaneNormal, 1e-2) &&
-          csUtils.isEqual(camera.viewUp, otherCamera.viewUp, 1e-2)
-        );
-      });
-
-    return otherViewportsAnnotationsWithSameCameraDirection;
-  };
-
   _activateModify = (element) => {
-    // mobile sometimes has lingering interaction even when touchEnd triggers
-    // this check allows for multiple handles to be active which doesn't affect
-    // tool usage.
-    state.isInteractingWithTool = !this.configuration.mobile?.enabled;
-
     element.addEventListener(Events.MOUSE_UP, this._endCallback);
     element.addEventListener(Events.MOUSE_DRAG, this._dragCallback);
     element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
