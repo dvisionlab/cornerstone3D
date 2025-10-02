@@ -1,7 +1,13 @@
-import { vec2 } from 'gl-matrix';
+import { vec2, vec3 } from 'gl-matrix';
 import vtkMath from '@kitware/vtk.js/Common/Core/Math';
 import { utilities as csUtils, type Types } from '@cornerstonejs/core';
 import liangBarksyClip from '../../utilities/math/vec2/liangBarksyClip';
+
+const OPERATION = {
+  DRAG: 1,
+  ROTATE: 2,
+  SLAB: 3,
+};
 
 const AXIS_MAP = {
     AXIAL: [
@@ -194,4 +200,53 @@ export function calculateReferenceLines(
       }
     }
     return intersections;
+  }
+
+  export function calculateDragDelta(evt, annotation, viewport) {
+    const { deltaPoints } = evt.detail;
+    const delta = deltaPoints.world;
+    const { data } = annotation;
+    const { handles } = data;
+    const { activeOperation } = handles;
+
+    if (activeOperation === OPERATION.DRAG) {
+      const { activeViewportIds } = data;
+      const { renderingEngine } = getEnabledElement(viewport.element);
+
+      const activeViewport = renderingEngine.getViewport(activeViewportIds[0]);
+      const { camera } = activeViewport;
+      const { viewPlaneNormal } = camera;
+
+      const line = data.referenceLines.find(
+        (line) => line[0].id === activeViewportIds[0]
+      );
+
+      if (!line) {
+        return [0, 0, 0];
+      }
+
+      const axis = AXIS_MAP[data.orientation.toUpperCase()].find(
+        (axis) => axis.name === line[5]
+      );
+
+      if (!axis) {
+        return [0, 0, 0];
+      }
+
+      const dragDirection = vec3.fromValues(
+        delta[0],
+        delta[1],
+        delta[2]
+      );
+
+      const normalVec3 = vec3.fromValues(axis.normal[0], axis.normal[1], axis.normal[2]);
+      const dot = vec3.dot(dragDirection, normalVec3);
+
+      const projectedDelta = vec3.create();
+      vec3.scale(projectedDelta, normalVec3, dot);
+
+      return projectedDelta;
+    }
+
+    return [0, 0, 0];
   }

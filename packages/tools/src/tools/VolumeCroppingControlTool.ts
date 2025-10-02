@@ -39,6 +39,7 @@ import liangBarksyClip from '../utilities/math/vec2/liangBarksyClip';
 import {
   calculateReferenceLines,
   calculateIntersections,
+  calculateDragDelta,
 } from '../utilities/cropping/render';
 import * as lineSegment from '../utilities/math/line';
 import type {
