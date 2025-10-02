@@ -18,7 +18,6 @@ import {
 
 import {
   getToolGroup,
-  getToolGroupForViewport,
 } from '../store/ToolGroupManager';
 
 import {
@@ -27,10 +26,7 @@ import {
   removeAnnotation,
 } from '../stateManagement/annotation/annotationState';
 
-import {
-  drawCircle as drawCircleSvg,
-  drawLine as drawLineSvg,
-} from '../drawingSvg';
+import { drawLine as drawLineSvg } from '../drawingSvg';
 import { state } from '../store/state';
 import { Events } from '../enums';
 import { getViewportIdsWithToolToRender } from '../utilities/viewportFilters';
@@ -53,8 +49,6 @@ import type {
 } from '../types';
 import { isAnnotationLocked } from '../stateManagement/annotation/annotationLocking';
 import triggerAnnotationRenderForViewportIds from '../utilities/triggerAnnotationRenderForViewportIds';
-
-const { RENDERING_DEFAULTS } = CONSTANTS;
 
 type ReferenceLine = [
   viewport: {
@@ -112,13 +106,8 @@ const OPERATION = {
  * toolGroup.addTool(VolumeCroppingControlTool.toolName);
  * toolGroup.addTool(VolumeCroppingTool.toolName);
  *
- * // Configure with custom colors and settings
+ * // Configure with custom settings
  * toolGroup.setToolConfiguration(VolumeCroppingControlTool.toolName, {
- *   lineColors: {
- *     AXIAL: [1.0, 0.0, 0.0],    // Red for axial views
- *     CORONAL: [0.0, 1.0, 0.0],  // Green for coronal views
- *     SAGITTAL: [1.0, 1.0, 0.0], // Yellow for sagittal views
- *   },
  *   lineWidth: 2.0,
  *   extendReferenceLines: true
  * });
@@ -147,11 +136,6 @@ const OPERATION = {
  * @property {Object} mobile - Mobile-specific configuration
  * @property {boolean} mobile.enabled - Enable mobile touch interactions (default: false)
  * @property {number} mobile.opacity - Opacity for mobile interactions (default: 0.8)
- * @property {Object} lineColors - Color configuration for different viewport orientations
- * @property {number[]} lineColors.AXIAL - RGB color array for axial viewport lines [r, g, b] (default: [1.0, 0.0, 0.0])
- * @property {number[]} lineColors.CORONAL - RGB color array for coronal viewport lines [r, g, b] (default: [0.0, 1.0, 0.0])
- * @property {number[]} lineColors.SAGITTAL - RGB color array for sagittal viewport lines [r, g, b] (default: [1.0, 1.0, 0.0])
- * @property {number[]} lineColors.UNKNOWN - RGB color array for unknown orientation lines [r, g, b] (default: [0.0, 0.0, 1.0])
  * @property {number} lineWidth - Default width of reference lines in pixels (default: 1.5)
  * @property {number} lineWidthActive - Width of reference lines when actively dragging in pixels (default: 2.5)
  * @property {number} activeLineWidth - Alias for lineWidthActive for backward compatibility
@@ -196,12 +180,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
           enabled: false,
           opacity: 0.8,
         },
-        lineColors: {
-          AXIAL: [1.0, 1.0, 1.0], //  Red for axial
-          CORONAL: [1.0, 1.0, 1.0], // Green for coronal
-          SAGITTAL: [1.0, 1.0, 1.0], // Yellow for sagittal
-          UNKNOWN: [1.0, 1.0, 1.0], // Blue for unknown
-        },
         lineWidth: 1.5,
         lineWidthActive: 2.5,
       },
@@ -209,18 +187,10 @@ class VolumeCroppingControlTool extends AnnotationTool {
   ) {
     super(toolProps, defaultToolProps);
 
-    this._getReferenceLineColor =
-      toolProps.configuration?.getReferenceLineColor ||
-      REFERENCE_LINE_COLOR;
-
     const viewportsInfo = getToolGroup(this.toolGroupId)?.viewportsInfo;
 
     if (viewportsInfo && viewportsInfo.length > 0) {
       const { viewportId, renderingEngineId } = viewportsInfo[0];
-      const enabledElement = getEnabledElementByIds(
-        viewportId,
-        renderingEngineId
-      );
       const renderingEngine = getRenderingEngine(renderingEngineId);
       const viewport = renderingEngine.getViewport(viewportId);
       const volumeActors = viewport.getActors();
@@ -1087,22 +1057,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     enabledElement: Types.IEnabledElement,
     svgDrawingHelper: SVGDrawingHelper
   ): boolean => {
-    function lineIntersection2D(p1, p2, q1, q2) {
-      const s1_x = p2[0] - p1[0];
-      const s1_y = p2[1] - p1[1];
-      const s2_x = q2[0] - q1[0];
-      const s2_y = q2[1] - q1[1];
-      const denom = -s2_x * s1_y + s1_x * s2_y;
-      if (Math.abs(denom) < 1e-8) {
-        return null;
-      } // Parallel
-      const s = (-s1_y * (p1[0] - q1[0]) + s1_x * (p1[1] - q1[1])) / denom;
-      const t = (s2_x * (p1[1] - q1[1]) - s2_y * (p1[0] - q1[0])) / denom;
-      if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
-        return [p1[0] + t * s1_x, p1[1] + t * s1_y];
-      }
-      return null;
-    }
+
     const viewportsInfo = this._getViewportsInfo();
     if (!viewportsInfo || viewportsInfo.length === 0) {
       // No viewports available
@@ -1144,7 +1099,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const otherViewportAnnotations = annotations.filter(annotation => {
       // Escludi l'annotazione corrente del viewport
       if (!viewportAnnotation.isVirtual && !annotation.isVirtual &&
-          annotation.data.viewportId === viewportAnnotation.data.viewportId) {
+        annotation.data.viewportId === viewportAnnotation.data.viewportId) {
         return false;
       }
       return true;
@@ -1411,44 +1366,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
         }
       }
 
-      // get color for the reference line using orientation
-
-      const otherViewport = line[0];
-      let orientation = null;
-      // Try to get orientation from annotation data or viewportId
-      if (otherViewport && otherViewport.id) {
-        // Try to get from annotation if available
-        const annotationForViewport = annotations.find(
-          (a) => a.data.viewportId === otherViewport.id
-        );
-        if (annotationForViewport && annotationForViewport.data.orientation) {
-          orientation = String(
-            annotationForViewport.data.orientation
-          ).toUpperCase();
-        } else {
-          // Fallback: try to infer from viewportId
-          const idUpper = otherViewport.id.toUpperCase();
-          if (idUpper.includes('AXIAL')) {
-            orientation = 'AXIAL';
-          } else if (idUpper.includes('CORONAL')) {
-            orientation = 'CORONAL';
-          } else if (idUpper.includes('SAGITTAL')) {
-            orientation = 'SAGITTAL';
-          }
-        }
-      }
-      // Use lineColors from configuration
-      const lineColors = this.configuration.lineColors || {};
-      const colorArr = lineColors[orientation] ||
-        lineColors.unknown || [1.0, 0.0, 0.0]; // fallback to red
-
-      // Convert [r,g,b] to rgb string if needed
-      const color = Array.isArray(colorArr)
-        ? `rgb(${colorArr.map((v) => Math.round(v * 255)).join(',')})`
-        : colorArr;
-
       const selectedViewportId = data.activeViewportIds.find(
-        (id) => id === otherViewport.id
+        (id) => id === line[0].id
       );
 
       let lineWidth = this.configuration.lineWidth ?? 1.5;
@@ -1462,20 +1381,20 @@ class VolumeCroppingControlTool extends AnnotationTool {
       }
 
       const lineUID = `${lineIndex}`;
-        if (intersections.length === 2) {
-          drawLineSvg(
-            svgDrawingHelper,
-            annotationUID,
-            lineUID,
-            intersections[0].point,
-            intersections[1].point,
-            {
-              color,
-              lineWidth,
-              lineDash: this.mode === "Active" ? [4,4] : undefined
-            }
-          );
-        }
+      if (intersections.length === 2) {
+        drawLineSvg(
+          svgDrawingHelper,
+          annotationUID,
+          lineUID,
+          intersections[0].point,
+          intersections[1].point,
+          {
+            color: REFERENCE_LINE_COLOR,
+            lineWidth,
+            lineDash: this.mode === "Active" ? [4, 4] : undefined
+          }
+        );
+      }
 
     });
 
@@ -1570,20 +1489,20 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     // Se una viewport è ruotata e il tool è attualmente abilitato, disabilitalo.
     if (isAnyViewportRotated && this.mode === 'Active') {
-        console.warn('Una viewport è stata ruotata. Disabilitazione del VolumeCroppingControlTool.');
-        toolGroup.setToolEnabled(this.getToolName());
+      console.warn('Una viewport è stata ruotata. Disabilitazione del VolumeCroppingControlTool.');
+      toolGroup.setToolEnabled(this.getToolName());
     }
     // Opzionale: riabilita il tool se nessuna viewport è più ruotata
     else if (!isAnyViewportRotated && this.mode === 'Enabled') {
-        console.log('Tutte le viewport sono tornate a una vista canonica. Riabilitazione del VolumeCroppingControlTool.');
-        toolGroup.setToolActive(this.getToolName());
+      console.log('Tutte le viewport sono tornate a una vista canonica. Riabilitazione del VolumeCroppingControlTool.');
+      toolGroup.setToolActive(this.getToolName());
     }
   };
 
-   _subscribeToCameraModified(viewports) {
+  _subscribeToCameraModified(viewports) {
     viewports.forEach(({ viewportId, renderingEngineId }) => {
       console.log('Subscribing to CAMERA_MODIFIED for viewport', viewportId, renderingEngineId);
-      const {viewport} = getEnabledElementByIds(
+      const { viewport } = getEnabledElementByIds(
         viewportId,
         renderingEngineId
       );
@@ -1921,6 +1840,23 @@ class VolumeCroppingControlTool extends AnnotationTool {
     };
     return isNear;
   }
+}
+
+function lineIntersection2D(p1, p2, q1, q2) {
+  const s1_x = p2[0] - p1[0];
+  const s1_y = p2[1] - p1[1];
+  const s2_x = q2[0] - q1[0];
+  const s2_y = q2[1] - q1[1];
+  const denom = -s2_x * s1_y + s1_x * s2_y;
+  if (Math.abs(denom) < 1e-8) {
+    return null;
+  } // Parallel
+  const s = (-s1_y * (p1[0] - q1[0]) + s1_x * (p1[1] - q1[1])) / denom;
+  const t = (s2_x * (p1[1] - q1[1]) - s2_y * (p1[0] - q1[0])) / denom;
+  if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
+    return [p1[0] + t * s1_x, p1[1] + t * s1_y];
+  }
+  return null;
 }
 
 VolumeCroppingControlTool.toolName = 'VolumeCroppingControl';
