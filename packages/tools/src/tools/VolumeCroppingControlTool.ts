@@ -76,8 +76,6 @@ interface VolumeCroppingAnnotation extends Annotation {
     clippingPlaneReferenceLines?: ReferenceLine[];
     orientation?: string; // AXIAL, CORONAL, SAGITTAL
   };
-  isVirtual?: boolean;
-  virtualNormal?: Types.Point3;
 }
 
 const REFERENCE_LINE_COLOR = 'rgba(255, 255, 255, 1)';
@@ -121,7 +119,6 @@ const OPERATION = {
  * @extends AnnotationTool
  *
  * @property {string} seriesInstanceUID - Frame of reference for the tool
- * @property {VolumeCroppingAnnotation[]} _virtualAnnotations - Store virtual annotations for missing viewport orientations (e.g., CT_CORONAL when only axial and sagittal are present)
  * @property {string} toolName - Static tool identifier: 'VolumeCroppingControl'
  * @property {Array<SphereState>} sphereStates - Array of sphere state objects for 3D volume manipulation handles
  * @property {number|null} draggingSphereIndex - Index of currently dragged sphere, null when not dragging
@@ -151,8 +148,6 @@ const OPERATION = {
  * - Limited to orthogonal viewport orientations (axial, coronal, sagittal)l
  */
 class VolumeCroppingControlTool extends AnnotationTool {
-  // Store virtual annotations (e.g., for missing orientations like CT_CORONAL)
-  _virtualAnnotations: VolumeCroppingAnnotation[] = [];
   static toolName;
   seriesInstanceUID?: string;
   sphereStates: {
@@ -353,9 +348,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
   }
 
   onSetToolActive() {
-    // console.debug(
-    //   `VolumeCroppingControlTool: onSetToolActive called for tool ${this.getToolName()}`
-    // );
     const viewportsInfo = this._getViewportsInfo();
 
     // Check if any annotation exists before proceeding
@@ -411,12 +403,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
   }
 
   onSetToolEnabled() {
-    console.debug(
-      `VolumeCroppingControlTool: onSetToolEnabled called for tool ${this.getToolName()}`
-    );
-    const viewportsInfo = this._getViewportsInfo();
-
-    //this._computeToolCenter(viewportsInfo);
+    // ...
   }
 
   onSetToolDisabled() {
@@ -426,7 +413,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const viewportsInfo = this._getViewportsInfo();
 
     this._unsubscribeToViewportNewVolumeSet(viewportsInfo);
-
     this._unsubscribeFromCameraModified(viewportsInfo);
 
     // has no value when the tool is disabled
@@ -489,10 +475,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     this._computeToolCenter(viewportsInfo);
   };
 
-  computeToolCenter = () => {
-    const viewportsInfo = this._getViewportsInfo();
-  };
-
   _computeToolCenter = (viewportsInfo): void => {
     if (!viewportsInfo || !viewportsInfo[0]) {
       console.warn(
@@ -548,99 +530,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
       presentNormals.push(normal);
       presentCenters.push(point);
     });
-
-    // If all three orientations are present, nothing to synthesize
-    if (presentViewportInfos.length === 2 && missingOrientation) {
-      // Synthesize virtual annotation for the missing orientation
-      const virtualNormal: Types.Point3 = [0, 0, 0];
-      vec3.cross(virtualNormal, presentNormals[0], presentNormals[1]);
-      vec3.normalize(virtualNormal, virtualNormal);
-      const virtualCenter: Types.Point3 = [
-        (presentCenters[0][0] + presentCenters[1][0]) / 2,
-        (presentCenters[0][1] + presentCenters[1][1]) / 2,
-        (presentCenters[0][2] + presentCenters[1][2]) / 2,
-      ];
-      const orientation = null;
-      const virtualAnnotation: VolumeCroppingAnnotation = {
-        highlighted: false,
-        metadata: {
-          cameraPosition: <Types.Point3>[...virtualCenter],
-          cameraFocalPoint: <Types.Point3>[...virtualCenter],
-          toolName: this.getToolName(),
-        },
-        data: {
-          handles: {
-            activeOperation: null,
-            toolCenter: this.toolCenter,
-            toolCenterMin: this.toolCenterMin,
-            toolCenterMax: this.toolCenterMax,
-          },
-          activeViewportIds: [],
-          viewportId: missingOrientation,
-          referenceLines: [],
-          orientation,
-        },
-        isVirtual: true,
-        virtualNormal,
-      };
-      this._virtualAnnotations = [virtualAnnotation];
-    } else if (presentViewportInfos.length === 1) {
-      // Synthesize two virtual annotations for the two missing orientations
-      // Get present orientation from camera normal
-      let presentOrientation = null;
-      const vpInfo = presentViewportInfos[0];
-      if (vpInfo.renderingEngineId) {
-        const renderingEngine = getRenderingEngine(vpInfo.renderingEngineId);
-        const viewport = renderingEngine.getViewport(vpInfo.viewportId);
-        if (viewport && viewport.getCamera) {
-          presentOrientation = this._getOrientationFromNormal(
-            viewport.getCamera().viewPlaneNormal
-          );
-        }
-      }
-      const presentCenter = presentCenters[0];
-      // Map canonical normals to orientation strings
-      const canonicalNormals = {
-        AXIAL: [0, 0, 1],
-        CORONAL: [0, 1, 0],
-        SAGITTAL: [1, 0, 0],
-      };
-      // missingIds: AXIAL, CORONAL, SAGITTAL
-      const missingIds = orientationIds.filter(
-        (id) => id !== presentOrientation
-      );
-      const virtualAnnotations: VolumeCroppingAnnotation[] = missingIds.map(
-        (orientation) => {
-          // Use orientation string to get canonical normal
-          const normal = canonicalNormals[orientation];
-          const virtualAnnotation = {
-            highlighted: false,
-            metadata: {
-              cameraPosition: <Types.Point3>[...presentCenter],
-              cameraFocalPoint: <Types.Point3>[...presentCenter],
-              toolName: this.getToolName(),
-            },
-            data: {
-              handles: {
-                activeOperation: null,
-                toolCenter: this.toolCenter,
-                toolCenterMin: this.toolCenterMin,
-                toolCenterMax: this.toolCenterMax,
-              },
-              activeViewportIds: [],
-              viewportId: orientation, // Use orientation string for virtual annotation
-              referenceLines: [],
-              orientation,
-            },
-            isVirtual: true,
-            virtualNormal: normal,
-          };
-
-          return virtualAnnotation;
-        }
-      );
-      this._virtualAnnotations = virtualAnnotations;
-    }
 
     if (viewportsInfo && viewportsInfo.length) {
       triggerAnnotationRenderForViewportIds(
@@ -772,67 +661,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
           });
         }
       });
-
-      // Update virtual annotations as well
-      if (this._virtualAnnotations && this._virtualAnnotations.length > 0) {
-        this._virtualAnnotations.forEach((annotation) => {
-          if (
-            annotation.data &&
-            annotation.data.handles &&
-            annotation.data.orientation
-          ) {
-            const orientation = annotation.data.orientation.toUpperCase();
-
-            // Apply the same orientation-specific logic to virtual annotations
-            if (orientation === 'AXIAL') {
-              annotation.data.handles.toolCenterMin = [
-                planes[0].origin[0], // XMIN
-                planes[2].origin[1], // YMIN
-                annotation.data.handles.toolCenterMin[2],
-              ];
-              annotation.data.handles.toolCenterMax = [
-                planes[1].origin[0], // XMAX
-                planes[3].origin[1], // YMAX
-                annotation.data.handles.toolCenterMax[2],
-              ];
-            } else if (orientation === 'CORONAL') {
-              annotation.data.handles.toolCenterMin = [
-                planes[0].origin[0], // XMIN
-                annotation.data.handles.toolCenterMin[1],
-                planes[4].origin[2], // ZMIN
-              ];
-              annotation.data.handles.toolCenterMax = [
-                planes[1].origin[0], // XMAX
-                annotation.data.handles.toolCenterMax[1],
-                planes[5].origin[2], // ZMAX
-              ];
-            } else if (orientation === 'SAGITTAL') {
-              annotation.data.handles.toolCenterMin = [
-                annotation.data.handles.toolCenterMin[0],
-                planes[2].origin[1], // YMIN
-                planes[4].origin[2], // ZMIN
-              ];
-              annotation.data.handles.toolCenterMax = [
-                annotation.data.handles.toolCenterMax[0],
-                planes[3].origin[1], // YMAX
-                planes[5].origin[2], // ZMAX
-              ];
-            }
-
-            annotation.data.handles.toolCenter = [
-              (annotation.data.handles.toolCenterMin[0] +
-                annotation.data.handles.toolCenterMax[0]) /
-              2,
-              (annotation.data.handles.toolCenterMin[1] +
-                annotation.data.handles.toolCenterMax[1]) /
-              2,
-              (annotation.data.handles.toolCenterMin[2] +
-                annotation.data.handles.toolCenterMax[2]) /
-              2,
-            ];
-          }
-        });
-      }
 
       // Trigger re-render to show updated reference lines
       triggerAnnotationRenderForViewportIds(
@@ -1027,12 +855,8 @@ class VolumeCroppingControlTool extends AnnotationTool {
       );
     }
 
-    // Filter annotations for this orientation, including virtual annotations
+    // Filter annotations for this orientation
     const filtered = annotations.filter((annotation) => {
-      // Always include virtual annotations for reference line rendering
-      if (annotation.isVirtual) {
-        return true;
-      }
       // Match by orientation property
       if (
         annotation.data.orientation &&
@@ -1067,10 +891,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const { viewport, renderingEngine } = enabledElement;
     const { element } = viewport;
     let annotations = this._getAnnotations(enabledElement);
-    // If we have virtual annotations , always include them
-    if (this._virtualAnnotations && this._virtualAnnotations.length) {
-      annotations = annotations.concat(this._virtualAnnotations);
-    }
     const camera = viewport.getCamera();
     const filteredToolAnnotations =
       this.filterInteractableAnnotationsForElement(element, annotations);
@@ -1098,8 +918,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     // Get all other annotations except the current viewport's
     const otherViewportAnnotations = annotations.filter(annotation => {
       // Escludi l'annotazione corrente del viewport
-      if (!viewportAnnotation.isVirtual && !annotation.isVirtual &&
-        annotation.data.viewportId === viewportAnnotation.data.viewportId) {
+      if (annotation.data.viewportId === viewportAnnotation.data.viewportId) {
         return false;
       }
       return true;
@@ -1112,10 +931,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     otherViewportAnnotations.forEach((annotation) => {
       const data = annotation.data;
-      // Type guard for isVirtual property
-      const isVirtual =
-        'isVirtual' in annotation &&
-        (annotation as { isVirtual?: boolean }).isVirtual === true;
       data.handles.toolCenter = this.toolCenter;
 
       let otherViewport,
@@ -1125,61 +940,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         otherCanvasDiagonalLength,
         otherCanvasCenter,
         otherViewportCenterWorld;
-      if (isVirtual) {
-        // Synthesize a virtual viewport/camera for any missing orientation
-        const realViewports = viewportsInfo.filter(
-          (vp) => vp.viewportId !== data.viewportId
-        );
-        if (realViewports.length === 2) {
-          const vp1 = renderingEngine.getViewport(realViewports[0].viewportId);
-          const vp2 = renderingEngine.getViewport(realViewports[1].viewportId);
-          const normal1 = vp1.getCamera().viewPlaneNormal;
-          const normal2 = vp2.getCamera().viewPlaneNormal;
-          const virtualNormal = vec3.create();
-          vec3.cross(virtualNormal, normal1, normal2);
-          vec3.normalize(virtualNormal, virtualNormal);
-          otherCamera = {
-            viewPlaneNormal: virtualNormal,
-            position: data.handles.toolCenter,
-            focalPoint: data.handles.toolCenter,
-            viewUp: [0, 1, 0],
-          };
-          clientWidth = viewport.canvas.clientWidth;
-          clientHeight = viewport.canvas.clientHeight;
-          otherCanvasDiagonalLength = Math.sqrt(
-            clientWidth * clientWidth + clientHeight * clientHeight
-          );
-          otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
-          otherViewportCenterWorld = data.handles.toolCenter;
-          otherViewport = {
-            id: data.viewportId,
-            canvas: viewport.canvas,
-            canvasToWorld: () => data.handles.toolCenter,
-          };
-        } else {
-          // Only one real viewport: use canonical normal from virtual annotation
-          const virtualNormal = (annotation as VolumeCroppingAnnotation)
-            .virtualNormal ?? [0, 0, 1];
-          otherCamera = {
-            viewPlaneNormal: virtualNormal,
-            position: data.handles.toolCenter,
-            focalPoint: data.handles.toolCenter,
-            viewUp: [0, 1, 0],
-          };
-          clientWidth = viewport.canvas.clientWidth;
-          clientHeight = viewport.canvas.clientHeight;
-          otherCanvasDiagonalLength = Math.sqrt(
-            clientWidth * clientWidth + clientHeight * clientHeight
-          );
-          otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
-          otherViewportCenterWorld = data.handles.toolCenter;
-          otherViewport = {
-            id: data.viewportId,
-            canvas: viewport.canvas,
-            canvasToWorld: () => data.handles.toolCenter,
-          };
-        }
-      } else {
+
         otherViewport = renderingEngine.getViewport(data.viewportId as string);
         if (!otherViewport) {
           return; // Skip se il viewport non esiste
@@ -1193,7 +954,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
         otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
         otherViewportCenterWorld =
           otherViewport.canvasToWorld(otherCanvasCenter);
-      }
+
 
       // Determina l'orientamento per calcolare gli assi corretti
       const orientation = (annotation.data.orientation || '').toUpperCase();
@@ -1220,7 +981,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
           ];
           break;
         default:
-          // Fallback per orientamenti sconosciuti o virtual annotations
+          // Fallback per orientamenti sconosciuti
           axes = [
             { normal: [1, 0, 0], name: 'X' },
             { normal: [0, 1, 0], name: 'Y' }
