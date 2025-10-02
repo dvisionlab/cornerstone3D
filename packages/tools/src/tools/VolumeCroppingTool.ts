@@ -1089,6 +1089,8 @@ class VolumeCroppingTool extends BaseTool {
     const worldBounds = imageData.getBounds(); // Already in world coordinates
     const cropFactor = this.configuration.initialCropFactor || 0.05;
 
+    console.log('Initial crop factor:', cropFactor);
+
     // Calculate cropping bounds using world bounds
     const xRange = worldBounds[1] - worldBounds[0];
     const yRange = worldBounds[3] - worldBounds[2];

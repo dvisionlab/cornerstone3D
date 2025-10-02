@@ -397,7 +397,6 @@ async function run(numViewports = getNumViewportsFromUrl()) {
         corners: [0, 0, 1],
       },
       showCornerSpheres: true,
-      initialCropFactor: 0.2,
     });
     toolGroupVRT.setToolActive(VolumeCroppingTool.toolName, {
       bindings: [
