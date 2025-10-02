@@ -86,13 +86,7 @@ interface VolumeCroppingAnnotation extends Annotation {
   virtualNormal?: Types.Point3;
 }
 
-function defaultReferenceLineColor() {
-  return 'rgba(255, 255, 255, 1)';
-}
-
-function defaultReferenceLineControllable() {
-  return true;
-}
+const REFERENCE_LINE_COLOR = 'rgba(255, 255, 255, 1)';
 
 const OPERATION = {
   DRAG: 1,
@@ -146,7 +140,6 @@ const OPERATION = {
  * @property {Types.Point3} toolCenterMin - Minimum bounds of the cropping volume in world coordinates [xMin, yMin, zMin]
  * @property {Types.Point3} toolCenterMax - Maximum bounds of the cropping volume in world coordinates [xMax, yMax, zMax]
  * @property {Function} _getReferenceLineColor - Optional callback to determine reference line color per viewport
- * @property {Function} _getReferenceLineControllable - Optional callback to determine if reference lines are interactive per viewport
  *
  * @configuration
  * @property {boolean} extendReferenceLines - Whether to extend reference lines beyond intersection points with dashed lines (default: true)
@@ -190,7 +183,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
   toolCenterMin: Types.Point3 = [0, 0, 0];
   toolCenterMax: Types.Point3 = [0, 0, 0];
   _getReferenceLineColor?: (viewportId: string) => string;
-  _getReferenceLineControllable?: (viewportId: string) => boolean;
   constructor(
     toolProps: PublicToolProps = {},
     defaultToolProps: ToolProps = {
@@ -219,17 +211,9 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     this._getReferenceLineColor =
       toolProps.configuration?.getReferenceLineColor ||
-      defaultReferenceLineColor;
-    this._getReferenceLineControllable =
-      toolProps.configuration?.getReferenceLineControllable ||
-      defaultReferenceLineControllable;
+      REFERENCE_LINE_COLOR;
 
     const viewportsInfo = getToolGroup(this.toolGroupId)?.viewportsInfo;
-
-    eventTarget.addEventListener(
-      Events.VOLUMECROPPING_TOOL_CHANGED,
-      this._onSphereMoved
-    );
 
     if (viewportsInfo && viewportsInfo.length > 0) {
       const { viewportId, renderingEngineId } = viewportsInfo[0];
@@ -940,13 +924,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const referenceLines = data.referenceLines || [];
     for (let i = 0; i < referenceLines.length; ++i) {
       const otherViewport = referenceLines[i][0];
-      const viewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
-
-      if (!viewportControllable) {
-        continue;
-      }
       viewportIdArray.push(otherViewport.id);
       i++;
     }
@@ -1173,13 +1150,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
       return true;
     });
 
-    const volumeCroppingCenterCanvasMin = viewport.worldToCanvas(
-      this.toolCenterMin
-    );
-    const volumeCroppingCenterCanvasMax = viewport.worldToCanvas(
-      this.toolCenterMax
-    );
-
     const referenceLines = [];
 
     // get canvas information for points and lines (canvas box, canvas horizontal distances)
@@ -1268,15 +1238,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
         otherCanvasCenter = [clientWidth * 0.5, clientHeight * 0.5];
         otherViewportCenterWorld =
           otherViewport.canvasToWorld(otherCanvasCenter);
-      }
-
-      const otherViewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
-
-      // Se il viewport non è controllabile, salta
-      if (!otherViewportControllable) {
-        return;
       }
 
       // Determina l'orientamento per calcolare gli assi corretti
@@ -1428,10 +1389,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
 
     data.referenceLines = referenceLines;
 
-    const viewportColor = undefined // this._getReferenceLineColor(viewport.id);
-    const color =
-      viewportColor !== undefined ? viewportColor : 'rgba(255, 255, 255, 1)';
-
     referenceLines.forEach((line, lineIndex) => {
       // Calculate intersections with other lines in this viewport
       const intersections = [];
@@ -1490,9 +1447,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
         ? `rgb(${colorArr.map((v) => Math.round(v * 255)).join(',')})`
         : colorArr;
 
-      const viewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
       const selectedViewportId = data.activeViewportIds.find(
         (id) => id === otherViewport.id
       );
@@ -1508,7 +1462,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
       }
 
       const lineUID = `${lineIndex}`;
-      if (viewportControllable) {
         if (intersections.length === 2) {
           drawLineSvg(
             svgDrawingHelper,
@@ -1524,39 +1477,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
           );
         }
 
-        // no dashed lines
-        // if (
-        //   this.configuration.extendReferenceLines &&
-        //   intersections.length === 2
-        // ) {
-        //   // Sort intersections by distance from line start
-        //   const sortedIntersections = intersections
-        //     .map((intersection) => ({
-        //       ...intersection,
-        //       distance: vec2.distance(line[1], intersection.point),
-        //     }))
-        //     .sort((a, b) => a.distance - b.distance);
-
-        //   // Draw dashed lines in correct order
-        //   drawLineSvg(
-        //     svgDrawingHelper,
-        //     annotationUID,
-        //     lineUID + '_dashed_before',
-        //     line[1],
-        //     sortedIntersections[0].point,
-        //     { color, lineWidth, lineDash: [4, 4] }
-        //   );
-
-        //   drawLineSvg(
-        //     svgDrawingHelper,
-        //     annotationUID,
-        //     lineUID + '_dashed_after',
-        //     sortedIntersections[1].point,
-        //     line[2],
-        //     { color, lineWidth, lineDash: [4, 4] }
-        //   );
-        // }
-      }
     });
 
     renderStatus = true;
@@ -1579,50 +1499,6 @@ class VolumeCroppingControlTool extends AnnotationTool {
     });
 
     return toolGroupAnnotations;
-  };
-
-  _onSphereMoved = (evt) => {
-    if (evt.detail.originalClippingPlanes) {
-      this._syncWithVolumeCroppingTool(evt.detail.originalClippingPlanes);
-    } else {
-      if (evt.detail.seriesInstanceUID !== this.seriesInstanceUID) {
-        return;
-      }
-      // This is called when a sphere is moved
-      const { draggingSphereIndex, toolCenter } = evt.detail;
-      const newMin: [number, number, number] = [...this.toolCenterMin];
-      const newMax: [number, number, number] = [...this.toolCenterMax];
-      // face spheres
-      if (draggingSphereIndex >= 0 && draggingSphereIndex <= 5) {
-        const axis = Math.floor(draggingSphereIndex / 2);
-        const isMin = draggingSphereIndex % 2 === 0;
-        (isMin ? newMin : newMax)[axis] = toolCenter[axis];
-        this.setToolCenter(newMin, 'min');
-        this.setToolCenter(newMax, 'max');
-        return;
-      }
-      // corner spheres
-      if (draggingSphereIndex >= 6 && draggingSphereIndex <= 13) {
-        const idx = draggingSphereIndex;
-        if (idx < 10) {
-          newMin[0] = toolCenter[0];
-        } else {
-          newMax[0] = toolCenter[0];
-        }
-        if ([6, 7, 10, 11].includes(idx)) {
-          newMin[1] = toolCenter[1];
-        } else {
-          newMax[1] = toolCenter[1];
-        }
-        if (idx % 2 === 0) {
-          newMin[2] = toolCenter[2];
-        } else {
-          newMax[2] = toolCenter[2];
-        }
-        this.setToolCenter(newMin, 'min');
-        this.setToolCenter(newMax, 'max');
-      }
-    }
   };
 
   _onNewVolume = () => {
@@ -1806,17 +1682,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     const { data } = referenceAnnotation;
     const viewport = renderingEngine.getViewport(data.viewportId);
 
-    const linkedViewportAnnotations = annotations.filter((annotation) => {
-      const { data } = annotation;
-      const otherViewport = renderingEngine.getViewport(data.viewportId);
-      const otherViewportControllable = this._getReferenceLineControllable(
-        otherViewport.id
-      );
-
-      return otherViewportControllable === true;
-    });
-
-    if (!linkedViewportAnnotations || !linkedViewportAnnotations.length) {
+    if (!annotations || !annotations.length) {
       return [];
     }
 
@@ -1825,7 +1691,7 @@ class VolumeCroppingControlTool extends AnnotationTool {
     vtkMath.normalize(viewPlaneNormal);
 
     const otherViewportsAnnotationsWithSameCameraDirection =
-      linkedViewportAnnotations.filter((annotation) => {
+      annotations.filter((annotation) => {
         const { viewportId } = annotation.data;
         const otherViewport = renderingEngine.getViewport(viewportId);
         const otherCamera = otherViewport.getCamera();
