@@ -2,6 +2,11 @@ import { vec2, vec3 } from 'gl-matrix';
 import vtkMath from '@kitware/vtk.js/Common/Core/Math';
 import { utilities as csUtils, type Types } from '@cornerstonejs/core';
 import liangBarksyClip from '../../utilities/math/vec2/liangBarksyClip';
+import type { SVGDrawingHelper } from '../../types';
+import _getHash from '../../drawingSvg/_getHash';
+import setNewAttributesIfValid from '../../drawingSvg/setNewAttributesIfValid';
+import setAttributesIfNecessary from '../../drawingSvg/setAttributesIfNecessary';
+
 
 const OPERATION = {
   DRAG: 1,
@@ -250,3 +255,69 @@ export function calculateReferenceLines(
 
     return [0, 0, 0];
   }
+
+
+/**
+ * Disegna un path SVG composto da un perimetro esterno e un "buco" rettangolare interno.
+ * Utilizza la regola 'evenodd' per creare l'effetto di un overlay con un'area trasparente.
+ *
+ * @param svgDrawingHelper - L'helper per il disegno SVG.
+ * @param annotationUID - L'UID dell'annotazione a cui associare il path.
+ * @param pathUID - L'UID specifico per questo elemento path.
+ * @param outerPoints - I vertici del perimetro esterno (es. la viewport).
+ * @param holePoints - I vertici del buco interno (es. il box di cropping).
+ * @param options - Opzioni di stile come colore e opacità.
+ */
+export default function drawPathWithHole(
+  svgDrawingHelper: SVGDrawingHelper,
+  annotationUID: string,
+  pathUID: string,
+  outerPoints: Types.Point2[],
+  holePoints: Types.Point2[],
+  options: {
+    fillColor?: string;
+    fillOpacity?: number;
+  }
+): void {
+  const { fillColor = '#000', fillOpacity = 0.5 } = options;
+
+  // Combina i due set di punti in un unico array per la funzione `drawPath`.
+  // L'ordine è importante per la regola di riempimento.
+  const pointsArrays = [outerPoints, holePoints];
+  let pointsAttribute = '';
+
+  // Costruisce l'attributo 'd' del path SVG
+  for (const points of pointsArrays) {
+    points.forEach((point, index) => {
+      const cmd = index === 0 ? 'M' : 'L';
+      pointsAttribute += `${cmd} ${point[0]} ${point[1]} `;
+    });
+    pointsAttribute += 'Z '; // Chiude ogni forma (sia esterna che interna)
+  }
+
+  if (!pointsAttribute) {
+    return;
+  }
+
+  const svgns = 'http://www.w3.org/2000/svg';
+  const svgNodeHash = _getHash(annotationUID, 'path', pathUID);
+  const existingNode = svgDrawingHelper.getSvgNode(svgNodeHash);
+
+  const attributes = {
+    d: pointsAttribute,
+    fill: fillColor,
+    'fill-opacity': String(fillOpacity),
+    'fill-rule': 'evenodd', // L'attributo chiave per creare il "buco"
+    stroke: 'none', // L'overlay non ha bordi
+    'pointer-events': 'none', // Non deve intercettare gli eventi del mouse
+  };
+
+  if (existingNode) {
+    setAttributesIfNecessary(attributes, existingNode);
+    svgDrawingHelper.setNodeTouched(svgNodeHash);
+  } else {
+    const newNode = document.createElementNS(svgns, 'path');
+    setNewAttributesIfValid(attributes, newNode);
+    svgDrawingHelper.appendNode(newNode, svgNodeHash);
+  }
+}

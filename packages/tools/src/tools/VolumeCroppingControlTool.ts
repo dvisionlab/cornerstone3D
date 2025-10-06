@@ -36,10 +36,11 @@ import {
 } from '../cursors/elementCursor';
 import liangBarksyClip from '../utilities/math/vec2/liangBarksyClip';
 
-import {
+import drawPathWithHole, {
   calculateReferenceLines,
   calculateIntersections,
   calculateDragDelta,
+  lineIntersection2D,
 } from '../utilities/cropping/render';
 import * as lineSegment from '../utilities/math/line';
 import type {
@@ -915,6 +916,56 @@ class VolumeCroppingControlTool extends AnnotationTool {
     );
 
     data.referenceLines = referenceLines;
+
+    // Draw the overlay
+    // Dentro renderAnnotation, dopo il recupero di 'viewportAnnotation' e prima del disegno delle linee...
+
+    // ================= INIZIO NUOVO CODICE OVERLAY =================
+    // Controlla se abbiamo un'annotazione valida per la viewport corrente
+    if (viewportAnnotation && viewportAnnotation.data) {
+      // 1. Proietta i punti Min/Max del box 3D sul canvas 2D
+      const canvasMin = viewport.worldToCanvas(this.toolCenterMin);
+      const canvasMax = viewport.worldToCanvas(this.toolCenterMax);
+
+      // 2. Trova i bordi del rettangolo sul canvas in modo robusto,
+      //    indipendentemente dall'orientamento degli assi.
+      const left = Math.min(canvasMin[0], canvasMax[0]);
+      const right = Math.max(canvasMin[0], canvasMax[0]);
+      const top = Math.min(canvasMin[1], canvasMax[1]);
+      const bottom = Math.max(canvasMin[1], canvasMax[1]);
+
+      // 3. Costruisci i quattro vertici del buco
+      const holePoints: Types.Point2[] = [
+        [left, top],
+        [left, bottom],
+        [right, bottom],
+        [right, top],
+      ];
+
+      const { clientWidth, clientHeight } = viewport.canvas;
+
+      // 4. Definisci i punti per il perimetro esterno
+      const outerPoints: Types.Point2[] = [
+        [0, 0],
+        [clientWidth, 0],
+        [clientWidth, clientHeight],
+        [0, clientHeight],
+      ];
+
+      // 5. Chiama la funzione di disegno
+      drawPathWithHole(
+        svgDrawingHelper,
+        annotationUID,
+        'cropping-box-overlay',
+        outerPoints,
+        holePoints,
+        {
+          fillColor: '#000000',
+          fillOpacity: 0.5,
+        }
+      );
+    }
+    // ================== FINE CODICE OVERLAY NON CONFIGURABILE ==================
 
     referenceLines.forEach((line, lineIndex) => {
       const intersections = calculateIntersections(referenceLines, lineIndex);
